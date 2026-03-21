@@ -1,0 +1,118 @@
+name: lab-core-network
+description: Sample 3-tier enterprise network topology for digital twin
+
+devices:
+  r1:
+    hostname: R1-CORE
+    vendor: cisco
+    model: CSR1000v
+    os: ios-xe
+    loopback: 10.0.0.1/32
+    role: core
+    interfaces:
+      - name: GigabitEthernet1
+        ip: 192.168.1.1/30
+        neighbor: r2
+        neighbor_iface: GigabitEthernet1
+        status: up
+      - name: GigabitEthernet2
+        ip: 192.168.2.1/30
+        neighbor: r3
+        neighbor_iface: ge-0/0/0
+        status: up
+    protocols:
+      bgp:
+        asn: 65001
+        neighbors:
+          - peer: 10.0.0.2
+            remote_as: 65002
+            state: established
+      ospf:
+        process_id: 1
+        area: 0
+        networks: ["192.168.1.0/30", "192.168.2.0/30", "10.0.0.1/32"]
+
+  r2:
+    hostname: R2-DIST
+    vendor: cisco
+    model: CSR1000v
+    os: ios-xe
+    loopback: 10.0.0.2/32
+    role: distribution
+    interfaces:
+      - name: GigabitEthernet1
+        ip: 192.168.1.2/30
+        neighbor: r1
+        neighbor_iface: GigabitEthernet1
+        status: up
+      - name: GigabitEthernet2
+        ip: 192.168.3.1/30
+        neighbor: r4
+        neighbor_iface: GigabitEthernet1
+        status: up
+    protocols:
+      bgp:
+        asn: 65002
+        neighbors:
+          - peer: 10.0.0.1
+            remote_as: 65001
+            state: established
+
+  r3:
+    hostname: R3-DIST
+    vendor: juniper
+    model: vMX
+    os: junos
+    loopback: 10.0.0.3/32
+    role: distribution
+    interfaces:
+      - name: ge-0/0/0
+        ip: 192.168.2.2/30
+        neighbor: r1
+        neighbor_iface: GigabitEthernet2
+        status: up
+
+  r4:
+    hostname: R4-ACCESS
+    vendor: cisco
+    model: CSR1000v
+    os: ios-xe
+    loopback: 10.0.0.4/32
+    role: access
+    interfaces:
+      - name: GigabitEthernet1
+        ip: 192.168.3.2/30
+        neighbor: r2
+        neighbor_iface: GigabitEthernet2
+        status: up
+
+  r5:
+    hostname: R5-ACCESS
+    vendor: juniper
+    model: vMX
+    os: junos
+    loopback: 10.0.0.5/32
+    role: access
+    interfaces:
+      - name: ge-0/0/0
+        ip: 192.168.4.2/30
+        neighbor: r3
+        status: up
+
+failure_scenarios:
+  bgp_peer_down:
+    description: BGP session between R1 and R2 drops
+    affected_device: r1
+    affected_interface: GigabitEthernet1
+    type: bgp_session_drop
+    peer: 10.0.0.2
+  link_down_r2_r4:
+    description: Physical link failure between R2 and R4
+    affected_device: r2
+    affected_interface: GigabitEthernet2
+    type: interface_down
+  ospf_neighbor_lost:
+    description: OSPF adjacency lost between R3 and R5
+    affected_device: r3
+    affected_interface: ge-0/0/1
+    type: ospf_adjacency_drop

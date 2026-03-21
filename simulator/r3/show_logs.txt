@@ -1,0 +1,3 @@
+Mar 10 22:01:15 R3-DIST rpd[1234]: RPD_OSPF_NBRDOWN: OSPF neighbor 10.0.0.1 (ge-0/0/0.0) state changed from Full to Init
+Mar 10 22:01:20 R3-DIST rpd[1234]: RPD_OSPF_NBRUP: OSPF neighbor 10.0.0.1 (ge-0/0/0.0) state changed from Init to Full
+Mar 10 22:05:00 R3-DIST rpd[1234]: BGP_PREFIX_THRESH_EXCEEDED: 192.168.0.0/24 (External): Prefix limit exceeded

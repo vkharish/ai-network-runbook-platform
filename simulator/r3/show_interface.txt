@@ -1,0 +1,17 @@
+ge-0/0/0 {
+    description "Link to R1-CORE GigabitEthernet2";
+    unit 0 {
+        family inet {
+            address 192.168.2.2/30;
+        }
+    }
+}
+ge-0/0/1 {
+    description "Link to R5-ACCESS";
+    unit 0 {
+        family inet {
+            address 192.168.4.1/30;
+        }
+    }
+}
+Physical link is Up, link-level type: Ethernet

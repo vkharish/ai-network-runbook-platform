@@ -1,0 +1,4 @@
+GigabitEthernet1 is up, line protocol is up
+  Internet address is 192.168.1.2/30
+GigabitEthernet2 is up, line protocol is up
+  Internet address is 192.168.3.1/30

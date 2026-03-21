@@ -1,0 +1,7 @@
+GigabitEthernet1 is up, line protocol is up
+  Description: Link to R2-DIST GigabitEthernet2
+  Internet address is 192.168.3.2/30
+  MTU 1500 bytes, BW 1000000 Kbit/sec
+  Input errors: 0, Output errors: 0
+  5 minute input rate 1200 bits/sec, 2 packets/sec
+  5 minute output rate 1100 bits/sec, 2 packets/sec
