@@ -1,0 +1,2 @@
+Mar 10 21:55:00 R5-ACCESS rpd[5678]: RPD_OSPF_NBRUP: OSPF neighbor 10.0.0.3 (ge-0/0/0.0) state changed from Init to Full
+Mar 10 22:00:00 R5-ACCESS kernel: ge-0/0/0 Link Up 1000Mbps Full-Duplex

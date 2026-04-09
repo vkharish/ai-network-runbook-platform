@@ -1,0 +1,2 @@
+%BGP-5-ADJCHANGE: neighbor 10.0.0.2 Up
+%OSPF-5-ADJCHG: Process 1, Nbr 10.0.0.2 on GigabitEthernet1 from LOADING to FULL

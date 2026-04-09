@@ -1,0 +1,93 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: runbook_postgres
+    environment:
+      POSTGRES_USER: runbook
+      POSTGRES_PASSWORD: runbook
+      POSTGRES_DB: runbook_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U runbook"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: runbook_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+
+  chromadb:
+    image: chromadb/chroma:1.0.0
+    container_name: runbook_chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chroma_data:/chroma/chroma
+    ports:
+      - "8001:8000"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: runbook_api
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://runbook:runbook@postgres:5432/runbook_db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../runbooks:/app/runbooks
+      - ../simulator:/app/simulator
+      - ../topology:/app/topology
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery_worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: runbook_celery
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://runbook:runbook@postgres:5432/runbook_db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      - api
+    command: celery -A backend.tasks.celery_worker worker --loglevel=info -c 4
+
+  flower:
+    image: mher/flower:2.0.1
+    container_name: runbook_flower
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+
+volumes:
+  postgres_data:
+  chroma_data:
