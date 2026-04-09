@@ -1,8 +1,30 @@
 """Celery task: parse, chunk, embed, and index a runbook into ChromaDB."""
 
 import asyncio
+import time
 import uuid
 from pathlib import Path
+
+try:
+    from prometheus_client import Counter, Histogram
+
+    _INGEST_DURATION = Histogram(
+        "runbook_ingest_duration_seconds",
+        "End-to-end runbook ingestion latency",
+    )
+    _INGEST_TOTAL = Counter(
+        "runbook_ingest_total",
+        "Total runbook ingestion attempts",
+        ["outcome"],  # success | failure
+    )
+    _INGEST_CHUNKS = Histogram(
+        "runbook_ingest_chunks",
+        "Number of chunks produced per ingested runbook",
+        buckets=[1, 5, 10, 25, 50, 100, 250, 500],
+    )
+    _PROMETHEUS_AVAILABLE = True
+except ImportError:
+    _PROMETHEUS_AVAILABLE = False
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -38,6 +60,7 @@ def _make_session_factory():
 
 async def _ingest_pipeline(runbook_id: str, file_path: str) -> dict:
     engine, SessionLocal = _make_session_factory()
+    _t0 = time.perf_counter()
 
     try:
         # Step 1: mark as processing
@@ -48,6 +71,7 @@ async def _ingest_pipeline(runbook_id: str, file_path: str) -> dict:
             runbook = result.scalar_one_or_none()
             if runbook is None:
                 raise ValueError(f"Runbook {runbook_id} not found in database.")
+            runbook_title = runbook.title
             runbook.status = RunbookStatus.PROCESSING.value
             await db.commit()
 
@@ -96,22 +120,38 @@ async def _ingest_pipeline(runbook_id: str, file_path: str) -> dict:
         # Step 6: supersede old chunks (chunk versioning) then store new ones
         deleted = delete_by_runbook_id(runbook_id)
         if deleted:
-            log.info("old_chunks_superseded", runbook_id=runbook_id, deleted=deleted)
+            log.info("old_chunks_superseded", title=runbook_title, runbook_id=runbook_id, deleted=deleted)
         chroma_ids = add_chunks(chunks, all_embeddings)
 
-        # Step 7: update DB → INDEXED
+        # Step 7: update DB → INDEXED, increment chunk_version on re-index
         async with SessionLocal() as db:
             result = await db.execute(
                 select(Runbook).where(Runbook.id == uuid.UUID(runbook_id))
             )
             runbook = result.scalar_one_or_none()
             if runbook:
+                is_reindex = (runbook.chunk_count or 0) > 0
                 runbook.status = RunbookStatus.INDEXED.value
                 runbook.chunk_count = len(chunks)
                 runbook.chroma_ids = chroma_ids
+                if is_reindex or deleted > 0:
+                    runbook.chunk_version = (runbook.chunk_version or 1) + 1
+                    log.info(
+                        "chunk_version_bumped",
+                        runbook_id=runbook_id,
+                        version=runbook.chunk_version,
+                        old_chunks=deleted,
+                        new_chunks=len(chunks),
+                    )
                 await db.commit()
 
-        log.info("ingest_runbook_complete", runbook_id=runbook_id, chunks=len(chunks))
+        if _PROMETHEUS_AVAILABLE:
+            _elapsed = time.perf_counter() - _t0
+            _INGEST_DURATION.observe(_elapsed)
+            _INGEST_TOTAL.labels(outcome="success").inc()
+            _INGEST_CHUNKS.observe(len(chunks))
+
+        log.info("ingest_runbook_complete", title=runbook_title, runbook_id=runbook_id, chunks=len(chunks))
         return {"status": "indexed", "chunks": len(chunks)}
 
     finally:
@@ -144,16 +184,18 @@ async def _mark_failed(runbook_id: str) -> None:
     default_retry_delay=30,
     acks_late=True,
 )
-def ingest_runbook(self, runbook_id: str, file_path: str) -> dict:
+def ingest_runbook(self, runbook_id: str, file_path: str, title: str = "") -> dict:
     import traceback as _tb
-    log.info("ingest_runbook_started", runbook_id=runbook_id, file_path=file_path)
+    log.info("ingest_runbook_started", title=title, runbook_id=runbook_id, file_path=file_path)
     try:
         return asyncio.run(_ingest_pipeline(runbook_id, file_path))
     except Exception as exc:
-        log.error("ingest_runbook_failed", runbook_id=runbook_id, error=str(exc),
+        log.error("ingest_runbook_failed", title=title, runbook_id=runbook_id, error=str(exc),
                   traceback=_tb.format_exc())
         try:
             asyncio.run(_mark_failed(runbook_id))
         except Exception:
             pass
+        if _PROMETHEUS_AVAILABLE:
+            _INGEST_TOTAL.labels(outcome="failure").inc()
         raise self.retry(exc=exc)

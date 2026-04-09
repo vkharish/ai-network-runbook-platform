@@ -62,7 +62,7 @@ class ReportAgent:
         prompt = self._build_prompt(context, analysis)
         llm = get_llm_client()
 
-        log.info("report_llm_call", incident_id=context.incident_id)
+        log.info("report_llm_call", inc_ref=context.inc_ref, incident_id=context.incident_id)
         raw = llm.complete(
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
@@ -106,6 +106,7 @@ class ReportAgent:
 
         log.info(
             "report_complete",
+            inc_ref=context.inc_ref,
             incident_id=context.incident_id,
             steps=len(report.steps),
             citations=len(report.citations),

@@ -11,6 +11,7 @@ from backend.models.user_model import User
 from backend.schemas.user_schema import LoginRequest, TokenResponse, UserCreate, UserResponse
 from backend.app.dependencies import get_current_user
 from backend.core.logging import get_logger
+from backend.services import audit_service
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -28,6 +29,11 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> U
     db.add(user)
     await db.flush()
     log.info("user_registered", user_id=str(user.id), email=user.email)
+    await audit_service.log_action(
+        db, user_id=user.id, action="register",
+        resource_type="user", resource_id=str(user.id),
+        metadata={"email": user.email},
+    )
     return user
 
 
@@ -40,6 +46,10 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> di
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
     log.info("user_login", user_id=str(user.id))
+    await audit_service.log_action(
+        db, user_id=user.id, action="login",
+        resource_type="user", resource_id=str(user.id),
+    )
     return {
         "access_token": create_access_token(user.id, Role(user.role)),
         "refresh_token": create_refresh_token(user.id),

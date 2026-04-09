@@ -8,6 +8,7 @@ import backend.models.user_model       # noqa
 import backend.models.incident_model   # noqa
 import backend.models.runbook_model    # noqa
 import backend.models.topology_model   # noqa
+import backend.models.device_model     # noqa
 
 config = context.config
 if config.config_file_name:
@@ -27,10 +28,11 @@ async def run_async_migrations() -> None:
     engine = create_async_engine(settings.database_url)
     async with engine.begin() as conn:
         await conn.run_sync(
-            lambda c: context.configure(connection=c, target_metadata=target_metadata, compare_type=True)
+            lambda c: (
+                context.configure(connection=c, target_metadata=target_metadata, compare_type=True)
+                or context.run_migrations()
+            )
         )
-    async with engine.begin() as conn:
-        await conn.run_sync(lambda c: context.run_migrations())
     await engine.dispose()
 
 

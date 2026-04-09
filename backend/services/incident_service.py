@@ -42,7 +42,8 @@ async def run_diagnosis(incident_id: str, db: AsyncSession) -> dict:
     if incident is None:
         raise ValueError(f"Incident {incident_id} not found")
 
-    log.info("diagnosis_pipeline_start", incident_id=incident_id, title=incident.title)
+    inc_ref = f"INC-{str(incident.incident_number or 0).zfill(4)}"
+    log.info("diagnosis_pipeline_start", inc_ref=inc_ref, incident_id=incident_id, title=incident.title)
 
     try:
         # ── Load topology for neighbor context (optional) ────────────────
@@ -54,7 +55,7 @@ async def run_diagnosis(incident_id: str, db: AsyncSession) -> dict:
         topology = topology_result.scalar_one_or_none()
         topology_graph = topology.graph_data if topology else None
         if topology_graph:
-            log.info("topology_context_loaded", incident_id=incident_id, topology=topology.name)
+            log.info("topology_context_loaded", inc_ref=inc_ref, incident_id=incident_id, topology=topology.name)
 
         # ── Multi-agent orchestration ─────────────────────────────────────
         report = OrchestratorAgent().run(incident, topology_graph=topology_graph)
@@ -62,6 +63,7 @@ async def run_diagnosis(incident_id: str, db: AsyncSession) -> dict:
         orchestration = report.orchestration
         log.info(
             "diagnosis_pipeline_complete",
+            inc_ref=inc_ref,
             incident_id=incident_id,
             agents_invoked=orchestration.get("agents_invoked", []),
             iterations=orchestration.get("total_iterations", 0),
@@ -71,16 +73,23 @@ async def run_diagnosis(incident_id: str, db: AsyncSession) -> dict:
         )
 
         # ── Persist ───────────────────────────────────────────────────────
-        incident.ai_report = asdict(report)
+        # Truncate cli_evidence to prevent enormous JSONB storage on live devices
+        report_dict = asdict(report)
+        if report_dict.get("cli_evidence"):
+            report_dict["cli_evidence"] = {
+                k: v[:1000] + "…[truncated]" if len(v) > 1000 else v
+                for k, v in report_dict["cli_evidence"].items()
+            }
+        incident.ai_report = report_dict
         incident.root_cause = report.root_cause
         incident.status = IncidentStatus.AWAITING_INPUT.value
         await db.commit()
 
-        log.info("diagnosis_persisted", incident_id=incident_id, status=incident.status)
+        log.info("diagnosis_persisted", inc_ref=inc_ref, incident_id=incident_id, status=incident.status)
         return incident.ai_report  # type: ignore[return-value]
 
     except Exception as exc:
-        log.error("diagnosis_pipeline_failed", incident_id=incident_id, error=str(exc))
+        log.error("diagnosis_pipeline_failed", inc_ref=inc_ref, incident_id=incident_id, error=str(exc))
         # Revert to OPEN so the engineer can trigger a retry
         try:
             incident.status = IncidentStatus.OPEN.value

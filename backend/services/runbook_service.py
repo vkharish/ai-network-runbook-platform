@@ -102,7 +102,7 @@ async def upload_runbook(
     # Enqueue Celery ingestion task (import here to avoid circular imports).
     from backend.tasks.document_ingestion import ingest_runbook
 
-    ingest_runbook.delay(str(runbook.id), str(dest_path))
+    ingest_runbook.delay(str(runbook.id), str(dest_path), title=runbook.title)
 
     return runbook
 
@@ -141,7 +141,7 @@ async def update_runbook(
         runbook.tags = tags
     await db.commit()
     await db.refresh(runbook)
-    log.info("runbook_updated", runbook_id=str(runbook_id))
+    log.info("runbook_updated", title=runbook.title, runbook_id=str(runbook_id))
     return runbook
 
 
@@ -153,10 +153,11 @@ async def delete_runbook(db: AsyncSession, runbook_id: uuid.UUID) -> None:
     runbook = await get_runbook(db, runbook_id)
 
     # Remove vector embeddings from ChromaDB
+    runbook_title = runbook.title
     try:
         delete_by_runbook_id(str(runbook_id))
     except Exception as exc:
-        log.warning("chroma_delete_failed", runbook_id=str(runbook_id), error=str(exc))
+        log.warning("chroma_delete_failed", title=runbook_title, runbook_id=str(runbook_id), error=str(exc))
 
     # Remove file from disk
     file_path = UPLOAD_DIR / runbook.filename
@@ -165,7 +166,7 @@ async def delete_runbook(db: AsyncSession, runbook_id: uuid.UUID) -> None:
 
     await db.delete(runbook)
     await db.commit()
-    log.info("runbook_deleted", runbook_id=str(runbook_id))
+    log.info("runbook_deleted", title=runbook_title, runbook_id=str(runbook_id))
 
 
 # ---------------------------------------------------------------------------

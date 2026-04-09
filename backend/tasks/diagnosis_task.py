@@ -35,6 +35,21 @@ async def _run_async(incident_id: str) -> dict:
         await engine.dispose()
 
 
+async def _get_inc_ref(incident_id: str) -> str:
+    """Fetch incident_number from DB to build INC-XXXX label for logs."""
+    from sqlalchemy import select
+    from backend.models.incident_model import Incident
+    import uuid as _uuid
+    engine, SessionLocal = _make_session_factory()
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(select(Incident.incident_number).where(Incident.id == _uuid.UUID(incident_id)))
+            num = result.scalar_one_or_none() or 0
+            return f"INC-{str(num).zfill(4)}"
+    finally:
+        await engine.dispose()
+
+
 @celery_app.task(
     name="tasks.run_diagnosis",
     bind=True,
@@ -43,11 +58,12 @@ async def _run_async(incident_id: str) -> dict:
     acks_late=True,
 )
 def run_diagnosis_task(self, incident_id: str) -> dict:
-    log.info("diagnosis_task_started", incident_id=incident_id)
+    inc_ref = asyncio.run(_get_inc_ref(incident_id))
+    log.info("diagnosis_task_started", inc_ref=inc_ref, incident_id=incident_id)
     try:
         result = asyncio.run(_run_async(incident_id))
-        log.info("diagnosis_task_complete", incident_id=incident_id)
+        log.info("diagnosis_task_complete", inc_ref=inc_ref, incident_id=incident_id)
         return result
     except Exception as exc:
-        log.error("diagnosis_task_failed", incident_id=incident_id, error=str(exc))
+        log.error("diagnosis_task_failed", inc_ref=inc_ref, incident_id=incident_id, error=str(exc))
         raise self.retry(exc=exc)

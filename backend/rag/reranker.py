@@ -1,36 +1,35 @@
 """Cross-encoder reranker for RAG shortlist refinement.
 
-Uses ms-marco-MiniLM-L-6-v2 to score (query, passage) pairs and re-order
-the top-k results from the hybrid retrieval step.
+Uses flashrank (ONNX, no PyTorch) with ms-marco-MiniLM-L-12-v2 to score
+(query, passage) pairs and re-order the top-k results from vector retrieval.
 
-Enabled via RERANKER_ENABLED=true in .env.  Disabled by default because it
-adds ~2–5 s of CPU time per query (model is ~50 MB, loaded lazily on first use).
+Enabled via RERANKER_ENABLED=true in .env.  Disabled by default.
 """
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 
 from backend.core.logging import get_logger
 
 log = get_logger(__name__)
 
-_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-_reranker = None  # lazy singleton
+_MODEL_NAME = "ms-marco-MiniLM-L-12-v2"
 
 
-def _get_reranker():
-    global _reranker
-    if _reranker is None:
-        try:
-            from sentence_transformers import CrossEncoder
-            log.info("reranker_loading", model=_MODEL_NAME)
-            _reranker = CrossEncoder(_MODEL_NAME)
-            log.info("reranker_loaded", model=_MODEL_NAME)
-        except ImportError:
-            log.warning("reranker_unavailable", reason="sentence-transformers not installed")
-            _reranker = None
-    return _reranker
+@lru_cache(maxsize=1)
+def _get_ranker():
+    """Load the flashrank cross-encoder once and cache it."""
+    try:
+        from flashrank import Ranker
+        log.info("reranker_loading", model=_MODEL_NAME)
+        ranker = Ranker(model_name=_MODEL_NAME)
+        log.info("reranker_loaded", model=_MODEL_NAME)
+        return ranker
+    except ImportError:
+        log.warning("reranker_unavailable", reason="flashrank not installed")
+        return None
 
 
 def rerank(
@@ -42,32 +41,42 @@ def rerank(
 
     Args:
         query:   The original incident / search query.
-        chunks:  Candidate chunks (each must have a "text" key).
+        chunks:  Candidate chunks (each must have a ``"text"`` key).
         top_n:   How many to return after reranking.
 
     Returns:
         Chunks sorted by cross-encoder score descending, with ``rerank_score``
-        added to each dict.
+        added to each dict.  Falls back to original order if reranker fails.
     """
     if not chunks:
         return chunks
 
     try:
-        model = _get_reranker()
-        pairs = [(query, c["text"]) for c in chunks]
-        scores: list[float] = model.predict(pairs).tolist()
+        ranker = _get_ranker()
+        if ranker is None:
+            # flashrank unavailable — attach score from vector similarity as rerank_score
+            result = []
+            for chunk in chunks[:top_n]:
+                c = dict(chunk)
+                c["rerank_score"] = round(float(c.get("score", 0.0)), 4)
+                result.append(c)
+            return result
 
-        ranked = sorted(
-            zip(scores, chunks),
-            key=lambda x: x[0],
-            reverse=True,
-        )
+        from flashrank import RerankRequest
 
-        result = []
-        for score, chunk in ranked[:top_n]:
-            c = dict(chunk)
-            c["rerank_score"] = round(float(score), 4)
-            result.append(c)
+        passages = [{"id": i, "text": c["text"]} for i, c in enumerate(chunks)]
+        request = RerankRequest(query=query, passages=passages)
+        results = ranker.rerank(request)
+
+        # Map scores back to original chunk dicts
+        scored: list[dict[str, Any]] = []
+        for r in results:
+            chunk = dict(chunks[r["id"]])
+            chunk["rerank_score"] = round(float(r["score"]), 4)
+            scored.append(chunk)
+
+        scored.sort(key=lambda c: c["rerank_score"], reverse=True)
+        result = scored[:top_n]
 
         log.info(
             "rerank_done",
@@ -80,4 +89,9 @@ def rerank(
 
     except Exception as exc:
         log.warning("rerank_failed", error=str(exc))
-        return chunks[:top_n]
+        result = []
+        for chunk in chunks[:top_n]:
+            c = dict(chunk)
+            c["rerank_score"] = round(float(c.get("score", 0.0)), 4)
+            result.append(c)
+        return result

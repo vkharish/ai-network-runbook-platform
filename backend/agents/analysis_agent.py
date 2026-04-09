@@ -51,7 +51,7 @@ class AnalysisAgent:
         prompt = self._build_prompt(context)
         llm = get_llm_client()
 
-        log.info("analysis_llm_call", incident_id=context.incident_id)
+        log.info("analysis_llm_call", inc_ref=context.inc_ref, incident_id=context.incident_id)
         raw = llm.complete(
             messages=[
                 {"role": "system", "content": self.system_prompt},
@@ -64,6 +64,7 @@ class AnalysisAgent:
         result = self._parse(raw)
         log.info(
             "analysis_complete",
+            inc_ref=context.inc_ref,
             incident_id=context.incident_id,
             root_cause=result.root_cause[:80],
             confidence=result.confidence,
@@ -96,7 +97,10 @@ class AnalysisAgent:
         if ctx.cli_outputs:
             lines.append("\n## Device CLI Outputs")
             for cmd_key, output in ctx.cli_outputs.items():
-                lines.append(f"\n### {cmd_key}\n```\n{output.strip()}\n```")
+                truncated = output.strip()
+                if len(truncated) > 3000:
+                    truncated = truncated[:3000] + "\n…[truncated]"
+                lines.append(f"\n### {cmd_key}\n```\n{truncated}\n```")
 
         lines.append("\nAnalyze the incident and respond with the JSON object.")
         return "\n".join(lines)

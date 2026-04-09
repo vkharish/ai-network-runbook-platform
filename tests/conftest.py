@@ -5,6 +5,11 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+
+# SQLite doesn't have JSONB — map it to JSON so in-memory tests work
+if not hasattr(SQLiteTypeCompiler, "visit_JSONB"):
+    SQLiteTypeCompiler.visit_JSONB = SQLiteTypeCompiler.visit_JSON  # type: ignore[attr-defined]
 
 from backend.database.base import Base
 from backend.database.session import get_db
@@ -42,7 +47,12 @@ async def async_client(test_engine):
 
     async def override_get_db():
         async with SessionLocal() as session:
-            yield session
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db

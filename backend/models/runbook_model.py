@@ -25,6 +25,7 @@ class Runbook(AuditBase):
         String(50), nullable=False, default=RunbookStatus.PENDING.value, index=True
     )
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_version: Mapped[int] = mapped_column(Integer, default=1)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     chroma_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)

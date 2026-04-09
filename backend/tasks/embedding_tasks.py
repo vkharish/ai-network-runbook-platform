@@ -40,6 +40,7 @@ async def _reembed_pipeline(runbook_id: str) -> dict:
             if runbook is None:
                 raise ValueError(f"Runbook {runbook_id} not found.")
             filename = runbook.filename
+            runbook_title = runbook.title
             tags: list[str] = runbook.tags or []  # type: ignore[assignment]
 
         file_path = Path("uploads/runbooks") / filename
@@ -48,7 +49,7 @@ async def _reembed_pipeline(runbook_id: str) -> dict:
 
         # Remove old vectors
         deleted = delete_by_runbook_id(runbook_id)
-        log.info("old_vectors_removed", runbook_id=runbook_id, count=deleted)
+        log.info("old_vectors_removed", title=runbook_title, runbook_id=runbook_id, count=deleted)
 
         # Re-parse and chunk
         text = parse_document(file_path)
@@ -82,7 +83,7 @@ async def _reembed_pipeline(runbook_id: str) -> dict:
                 runbook.status = RunbookStatus.INDEXED.value
                 await db.commit()
 
-        log.info("reembed_runbook_complete", runbook_id=runbook_id, chunks=len(chunks))
+        log.info("reembed_runbook_complete", title=runbook_title, runbook_id=runbook_id, chunks=len(chunks))
         return {"status": "reembedded", "chunks": len(chunks)}
 
     finally:
@@ -96,10 +97,10 @@ async def _reembed_pipeline(runbook_id: str) -> dict:
     default_retry_delay=60,
     acks_late=True,
 )
-def reembed_runbook(self, runbook_id: str) -> dict:
-    log.info("reembed_runbook_started", runbook_id=runbook_id)
+def reembed_runbook(self, runbook_id: str, title: str = "") -> dict:
+    log.info("reembed_runbook_started", title=title, runbook_id=runbook_id)
     try:
         return asyncio.run(_reembed_pipeline(runbook_id))
     except Exception as exc:
-        log.error("reembed_runbook_failed", runbook_id=runbook_id, error=str(exc))
+        log.error("reembed_runbook_failed", title=title, runbook_id=runbook_id, error=str(exc))
         raise self.retry(exc=exc)

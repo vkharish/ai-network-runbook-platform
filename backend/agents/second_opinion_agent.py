@@ -37,6 +37,7 @@ class SecondOpinionAgent:
 
         log.info(
             "second_opinion_reinvestigated",
+            inc_ref=context.inc_ref,
             incident_id=context.incident_id,
             refined_queries=len(refined_queries),
             new_chunks=len(new_chunks),
@@ -47,6 +48,7 @@ class SecondOpinionAgent:
         # Return a new context with the enriched chunk set; CLI/topology stay the same.
         return InvestigationContext(
             incident_id=context.incident_id,
+            inc_ref=context.inc_ref,
             title=context.title,
             description=context.description,
             severity=context.severity,

@@ -10,7 +10,7 @@ from backend.core.security import Role
 from backend.database.session import get_db
 from backend.models.user_model import User
 from backend.schemas.runbook_schema import RunbookQueryRequest, RunbookQueryResponse, RunbookResponse, RunbookUpdate
-from backend.services import runbook_service
+from backend.services import audit_service, runbook_service
 
 router = APIRouter(prefix="/runbooks", tags=["Runbooks"])
 
@@ -42,6 +42,11 @@ async def upload_runbook(
         file=file,
         description=description,
         tags=tag_list,
+    )
+    await audit_service.log_action(
+        db, user_id=_current_user.id, action="runbook_upload",
+        resource_type="runbook", resource_id=str(runbook.id),
+        metadata={"filename": runbook.filename, "tags": tag_list},
     )
     return RunbookResponse.model_validate(runbook)
 
@@ -101,6 +106,10 @@ async def delete_runbook(
     _current_user: User = Depends(require_role(Role.ADMIN)),
 ) -> None:
     await runbook_service.delete_runbook(db, runbook_id)
+    await audit_service.log_action(
+        db, user_id=_current_user.id, action="runbook_delete",
+        resource_type="runbook", resource_id=str(runbook_id),
+    )
 
 
 @router.post(

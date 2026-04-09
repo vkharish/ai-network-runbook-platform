@@ -88,10 +88,10 @@ async def test_diagnose_wrong_status_rejected(async_client: AsyncClient):
     create_resp = await async_client.post("/api/v1/incidents/", json=INCIDENT_PAYLOAD, headers=headers)
     incident_id = create_resp.json()["id"]
 
-    # Set to resolved manually
+    # Set to closed manually — closed incidents cannot be re-diagnosed
     await async_client.patch(
         f"/api/v1/incidents/{incident_id}",
-        json={"status": "resolved"},
+        json={"status": "closed"},
         headers=headers,
     )
     resp = await async_client.post(

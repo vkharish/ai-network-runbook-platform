@@ -13,6 +13,7 @@ from slowapi.util import get_remote_address
 
 from backend.app.api.routes.audit_routes import router as audit_router
 from backend.app.api.routes.auth_routes import router as auth_router
+from backend.app.api.routes.device_routes import router as device_router
 from backend.app.api.routes.incident_routes import router as incident_router
 from backend.app.api.routes.runbook_routes import router as runbook_router
 from backend.app.api.routes.simulation_routes import router as simulation_router
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(topology_router, prefix=API_PREFIX)
     app.include_router(simulation_router, prefix=API_PREFIX)
     app.include_router(audit_router, prefix=API_PREFIX)
+    app.include_router(device_router, prefix=API_PREFIX)
 
     @app.get("/health", tags=["Health"])
     async def health() -> dict:

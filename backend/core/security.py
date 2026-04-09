@@ -2,22 +2,13 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
+import bcrypt as _bcrypt_lib
 from jose import JWTError, jwt
-from passlib.context import CryptContext
-
-# passlib 1.7.x doesn't recognise bcrypt 4.x's version string — patch it
-try:
-    import bcrypt as _bcrypt
-    if not hasattr(_bcrypt, "__about__"):
-        _bcrypt.__about__ = type("_about", (), {"__version__": _bcrypt.__version__})()
-except Exception:
-    pass
 
 from backend.core.config import settings
 from backend.core.logging import get_logger
 
 log = get_logger(__name__)
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class Role(str, Enum):
@@ -34,11 +25,12 @@ def role_gte(user_role: Role, required: Role) -> bool:
 
 
 def hash_password(plain: str) -> str:
-    return pwd_ctx.hash(plain)
+    # Use bcrypt directly — passlib 1.7.x is incompatible with bcrypt >= 4.0
+    return _bcrypt_lib.hashpw(plain.encode("utf-8"), _bcrypt_lib.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
+    return _bcrypt_lib.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
 def _create_token(subject, token_type, extra_claims=None, expires_delta=None) -> str:
@@ -79,3 +71,23 @@ def extract_user_id(token: str) -> str:
 
 def extract_role(token: str) -> Role:
     return Role(decode_token(token)["role"])
+
+
+from cryptography.fernet import Fernet
+
+
+def _get_fernet() -> Fernet:
+    """Derive a Fernet key from APP_SECRET_KEY."""
+    import base64, hashlib
+    key = hashlib.sha256(settings.app_secret_key.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def encrypt_credential(plaintext: str) -> str:
+    """Encrypt a credential string for storage."""
+    return _get_fernet().encrypt(plaintext.encode()).decode()
+
+
+def decrypt_credential(ciphertext: str) -> str:
+    """Decrypt a stored credential string."""
+    return _get_fernet().decrypt(ciphertext.encode()).decode()

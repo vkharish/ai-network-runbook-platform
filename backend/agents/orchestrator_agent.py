@@ -116,9 +116,11 @@ class OrchestratorAgent:
         t_start = time.perf_counter()
 
         try:
+            inc_ref = f"INC-{str(incident.incident_number or 0).zfill(4)}"
             while state.route != "done":
                 log.info(
                     "orchestrator_step",
+                    inc_ref=inc_ref,
                     incident_id=str(incident.id),
                     route=state.route,
                     iteration=state.iteration,
@@ -159,6 +161,7 @@ class OrchestratorAgent:
 
             log.info(
                 "orchestrator_complete",
+                inc_ref=inc_ref,
                 incident_id=str(incident.id),
                 elapsed_s=round(elapsed, 2),
                 confidence=state.report.confidence,
@@ -266,9 +269,11 @@ class OrchestratorAgent:
         already = set(state.decisions)
 
         # Priority 1: Low confidence — re-investigate with refined queries
+        inc_ref = f"INC-{str(incident.incident_number or 0).zfill(4)}"
         if analysis.confidence < 0.6 and state.iteration < 2:
             log.info(
                 "orchestrator_routing_second_opinion",
+                inc_ref=inc_ref,
                 confidence=analysis.confidence,
                 iteration=state.iteration,
                 incident_id=str(incident.id),
@@ -279,6 +284,7 @@ class OrchestratorAgent:
         if "bgp" in protocol and not any("bgp_specialist" in d for d in already):
             log.info(
                 "orchestrator_routing_bgp_specialist",
+                inc_ref=inc_ref,
                 protocol=protocol,
                 incident_id=str(incident.id),
             )
@@ -290,6 +296,7 @@ class OrchestratorAgent:
         ):
             log.info(
                 "orchestrator_routing_junos_specialist",
+                inc_ref=inc_ref,
                 device=device,
                 incident_id=str(incident.id),
             )

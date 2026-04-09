@@ -4,6 +4,7 @@ import LoginPage from './pages/login'
 import DashboardPage from './pages/dashboard'
 import IncidentDetailPage from './pages/incidents'
 import RunbookChatPage from './pages/runbook_chat'
+import TopologyPage from './pages/topology'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/incidents/:id" element={<ProtectedRoute><IncidentDetailPage /></ProtectedRoute>} />
         <Route path="/runbooks" element={<ProtectedRoute><RunbookChatPage /></ProtectedRoute>} />
+        <Route path="/topology" element={<ProtectedRoute><TopologyPage /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   )

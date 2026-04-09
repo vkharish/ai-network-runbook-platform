@@ -7,9 +7,9 @@ Responsibilities:
 """
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
+from backend.automation.device_gateway import DeviceGateway
 from backend.core.config import settings
 from backend.core.logging import get_logger
 from backend.rag.embedding_engine import get_embedding_engine
@@ -17,13 +17,13 @@ from backend.rag.vector_store import query_collection
 
 log = get_logger(__name__)
 
-# Resolved at import time — works regardless of working directory.
-SIMULATOR_DIR = Path(__file__).resolve().parent.parent.parent / "simulator"
+_device_gateway = DeviceGateway()
 
 
 @dataclass
 class InvestigationContext:
     incident_id: str
+    inc_ref: str          # human-readable: INC-0001
     title: str
     description: str
     severity: str
@@ -63,8 +63,10 @@ class InvestigationAgent:
             except Exception as exc:
                 log.warning("reranker_skipped", error=str(exc))
 
+        inc_ref = f"INC-{str(incident.incident_number or 0).zfill(4)}"
         log.info(
             "investigation_complete",
+            inc_ref=inc_ref,
             incident_id=str(incident.id),
             queries=len(queries),
             chunks=len(chunks),
@@ -73,6 +75,7 @@ class InvestigationAgent:
         )
         return InvestigationContext(
             incident_id=str(incident.id),
+            inc_ref=inc_ref,
             title=incident.title,
             description=incident.description,
             severity=incident.severity,
@@ -110,30 +113,55 @@ class InvestigationAgent:
         seen: set[tuple[str, int]] = set()
         merged: list[dict[str, Any]] = []
 
-        for query in queries:
-            try:
-                embedding = engine.embed_one(query)
-                raw = query_collection(embedding, top_k=top_k)
-                docs: list[str] = raw.get("documents", [[]])[0]
-                metas: list[dict] = raw.get("metadatas", [[]])[0]
-                distances: list[float] = raw.get("distances", [[]])[0]
+        # Try ChromaDB native vendor filter first (faster, higher precision).
+        # Falls back to unfiltered query + post-filter if the collection has no
+        # vendor-tagged chunks yet (e.g. runbooks uploaded before this feature).
+        native_filter: dict | None = (
+            {"vendor": vendor_hint} if vendor_hint and vendor_hint != "generic" else None
+        )
 
-                for doc, meta, dist in zip(docs, metas, distances):
-                    key = (meta.get("source", ""), meta.get("chunk_index", 0))
-                    if key not in seen:
-                        seen.add(key)
-                        merged.append(
-                            {
+        def _run_queries(where: dict | None) -> list[dict]:
+            results: list[dict] = []
+            _seen: set[tuple[str, int]] = set()
+            for query in queries:
+                try:
+                    embedding = engine.embed_one(query)
+                    raw = query_collection(embedding, top_k=top_k, where_filter=where)
+                    docs: list[str] = raw.get("documents", [[]])[0]
+                    metas: list[dict] = raw.get("metadatas", [[]])[0]
+                    distances: list[float] = raw.get("distances", [[]])[0]
+                    for doc, meta, dist in zip(docs, metas, distances):
+                        key = (meta.get("source", ""), meta.get("chunk_index", 0))
+                        if key not in _seen:
+                            _seen.add(key)
+                            results.append({
                                 "text": doc,
                                 "source": meta.get("source", ""),
                                 "runbook_id": meta.get("runbook_id", ""),
                                 "chunk_index": meta.get("chunk_index", 0),
                                 "score": round(1.0 - dist, 4),
                                 "tags": meta.get("tags", ""),
-                            }
-                        )
+                                "vendor": meta.get("vendor", "generic"),
+                            })
+                except Exception as exc:
+                    log.warning("rag_query_failed", query_preview=query[:60], error=str(exc))
+            return results
+
+        # Phase 1: vendor-specific query
+        if native_filter:
+            try:
+                merged = _run_queries(native_filter)
+                if len(merged) >= 2:
+                    log.info("vendor_native_filter_applied", vendor=vendor_hint, chunks=len(merged))
+                else:
+                    # Phase 2: not enough vendor chunks — fall back to unfiltered
+                    log.info("vendor_native_filter_fallback", vendor=vendor_hint, found=len(merged))
+                    merged = _run_queries(None)
             except Exception as exc:
-                log.warning("rag_query_failed", query_preview=query[:60], error=str(exc))
+                log.warning("vendor_native_filter_error", vendor=vendor_hint, error=str(exc))
+                merged = _run_queries(None)
+        else:
+            merged = _run_queries(None)
 
         # Hybrid BM25 + vector RRF re-rank when we have enough candidates
         if len(merged) > top_k:
@@ -147,27 +175,17 @@ class InvestigationAgent:
         else:
             merged.sort(key=lambda x: x.get("score", 0.0), reverse=True)
 
-        # Vendor-aware filtering: prefer chunks tagged for the affected vendor.
-        # Falls back to all chunks if fewer than 2 vendor-specific chunks are found.
-        if vendor_hint:
+        # Post-filter fallback: if native filter returned generic chunks, prefer vendor ones
+        if vendor_hint and not native_filter:
             vendor_chunks = [
                 c for c in merged
                 if vendor_hint in c.get("tags", "").lower()
                 or vendor_hint in c.get("source", "").lower()
+                or c.get("vendor") == vendor_hint
             ]
             if len(vendor_chunks) >= 2:
-                log.info(
-                    "vendor_filter_applied",
-                    vendor=vendor_hint,
-                    before=len(merged),
-                    after=len(vendor_chunks),
-                )
+                log.info("vendor_post_filter_applied", vendor=vendor_hint, chunks=len(vendor_chunks))
                 return vendor_chunks[:8]
-            log.info(
-                "vendor_filter_fallback",
-                vendor=vendor_hint,
-                vendor_chunks_found=len(vendor_chunks),
-            )
 
         return merged[:8]
 
@@ -208,26 +226,5 @@ class InvestigationAgent:
             return [], {}
 
     def _load_cli_outputs(self, device: str | None) -> dict[str, str]:
-        """Load *.txt simulator files for the affected device (or all if unknown)."""
-        if not SIMULATOR_DIR.exists():
-            log.warning("simulator_dir_missing", path=str(SIMULATOR_DIR))
-            return {}
-
-        if device:
-            # "R1-CORE" → "r1",  "R2-DIST" → "r2",  "r1" → "r1"
-            normalized = device.lower().split("-")[0].split("_")[0]
-            device_dir = SIMULATOR_DIR / normalized
-            dirs = [device_dir] if device_dir.exists() else list(SIMULATOR_DIR.iterdir())
-        else:
-            dirs = list(SIMULATOR_DIR.iterdir())
-
-        outputs: dict[str, str] = {}
-        for d in dirs:
-            if not d.is_dir():
-                continue
-            for txt in sorted(d.glob("*.txt")):
-                key = f"{d.name}_{txt.stem}"
-                outputs[key] = txt.read_text(encoding="utf-8", errors="replace")
-
-        log.info("cli_outputs_loaded", device=device, files=list(outputs.keys()))
-        return outputs
+        """Load CLI outputs via DeviceGateway (simulator or live SSH based on device config)."""
+        return _device_gateway.load_all_outputs(device)

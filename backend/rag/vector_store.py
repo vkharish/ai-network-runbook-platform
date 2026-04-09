@@ -62,14 +62,23 @@ def add_chunks(
 def query_collection(
     query_embedding: list[float],
     top_k: int = 5,
+    where_filter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return the top-k nearest neighbours for a query embedding."""
+    """Return the top-k nearest neighbours for a query embedding.
+
+    Args:
+        where_filter: Optional ChromaDB metadata filter, e.g. ``{"vendor": "cisco"}``.
+                      When supplied, only chunks matching the filter are searched.
+    """
     collection = get_or_create_collection()
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k,
-        include=["documents", "metadatas", "distances"],
-    )
+    kwargs: dict[str, Any] = {
+        "query_embeddings": [query_embedding],
+        "n_results": top_k,
+        "include": ["documents", "metadatas", "distances"],
+    }
+    if where_filter:
+        kwargs["where"] = where_filter
+    results = collection.query(**kwargs)
     return results  # type: ignore[return-value]
 
 

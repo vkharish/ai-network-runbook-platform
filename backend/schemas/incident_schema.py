@@ -25,6 +25,7 @@ class IncidentUpdate(BaseModel):
 class IncidentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+    incident_number: int | None
     title: str
     description: str
     status: str

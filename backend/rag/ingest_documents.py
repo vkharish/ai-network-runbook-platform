@@ -92,6 +92,20 @@ def split_text(
     return chunks
 
 
+_JUNIPER_HINTS = {"juniper", "junos", "vmx", "srx", "ex-series", "qfx", "mx-series"}
+_CISCO_HINTS = {"cisco", "ios-xe", "ios-xr", "nexus", "catalyst", "csr", "asr"}
+
+
+def _detect_vendor_from_tags(tags: list[str], source: str) -> str:
+    """Return 'cisco', 'juniper', or 'generic' based on tags and source filename."""
+    combined = " ".join(tags).lower() + " " + source.lower()
+    if any(h in combined for h in _JUNIPER_HINTS):
+        return "juniper"
+    if any(h in combined for h in _CISCO_HINTS):
+        return "cisco"
+    return "generic"
+
+
 def chunk_document(
     text: str,
     source: str,
@@ -102,6 +116,8 @@ def chunk_document(
 ) -> list[dict[str, Any]]:
     """Return a list of chunk dicts ready to be embedded and stored."""
     raw_chunks = split_text(text, chunk_size, overlap)
+    tags = tags or []
+    vendor = _detect_vendor_from_tags(tags, source)
     result: list[dict[str, Any]] = []
 
     for i, chunk in enumerate(raw_chunks):
@@ -112,12 +128,13 @@ def chunk_document(
                     "source": source,
                     "runbook_id": runbook_id,
                     "chunk_index": i,
-                    # Tags serialised as JSON string because ChromaDB metadata
-                    # values must be scalar (str / int / float / bool).
-                    "tags": ",".join(tags) if tags else "",
+                    # Tags serialised as a string — ChromaDB metadata must be scalar.
+                    "tags": ",".join(tags),
+                    # Vendor field enables efficient ChromaDB where-filter retrieval.
+                    "vendor": vendor,
                 },
             }
         )
 
-    log.info("document_chunked", source=source, total_chunks=len(result))
+    log.info("document_chunked", source=source, total_chunks=len(result), vendor=vendor)
     return result

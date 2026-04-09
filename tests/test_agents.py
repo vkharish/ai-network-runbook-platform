@@ -22,6 +22,7 @@ class FakeIncident:
     severity: str = "P2"
     affected_device: str = "R1-CORE"
     affected_protocol: str = "bgp"
+    incident_number: int = 1
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +82,7 @@ def test_analysis_agent_parses_valid_json(mock_llm):
 
     ctx = InvestigationContext(
         incident_id="test-id",
+        inc_ref="INC-0001",
         title="BGP down",
         description="Peer inactive",
         severity="P2",
@@ -110,6 +112,7 @@ def test_analysis_agent_graceful_fallback(monkeypatch):
 
     ctx = InvestigationContext(
         incident_id="test",
+        inc_ref="INC-0000",
         title="Test",
         description="desc",
         severity="P3",
@@ -210,14 +213,17 @@ def test_orchestrator_second_opinion_on_low_confidence(mock_llm, monkeypatch):
 
     monkeypatch.setattr("backend.agents.analysis_agent.get_llm_client", lambda: LowConfLLM())
     monkeypatch.setattr("backend.agents.report_agent.get_llm_client", lambda: LowConfLLM())
+    fake_embed = MagicMock(embed_one=lambda t: [0.0] * 384)
     monkeypatch.setattr(
         "backend.agents.investigation_agent.query_collection",
         lambda *a, **kw: {"documents": [[]], "metadatas": [[]], "distances": [[]]},
     )
+    monkeypatch.setattr("backend.agents.investigation_agent.get_embedding_engine", lambda: fake_embed)
     monkeypatch.setattr(
-        "backend.agents.investigation_agent.get_embedding_engine",
-        lambda: MagicMock(embed_one=lambda t: [0.0] * 384),
+        "backend.agents.second_opinion_agent.query_collection",
+        lambda *a, **kw: {"documents": [[]], "metadatas": [[]], "distances": [[]]},
     )
+    monkeypatch.setattr("backend.agents.second_opinion_agent.get_embedding_engine", lambda: fake_embed)
 
     incident = FakeIncident()
     incident.affected_protocol = "ospf"   # avoid BGP specialist route

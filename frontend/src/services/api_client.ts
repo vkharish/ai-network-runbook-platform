@@ -12,8 +12,20 @@ export interface User {
   is_active: boolean
 }
 
+export interface Device {
+  id: string
+  hostname: string
+  display_name: string
+  vendor: string
+  os: string
+  device_type: string
+  live_enabled: boolean
+  has_credentials: boolean
+}
+
 export interface Incident {
   id: string
+  incident_number: number | null
   title: string
   description: string
   severity: string
@@ -103,7 +115,11 @@ async function authFetch<T>(
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail ?? `HTTP ${res.status}`)
   }
-  return res.json() as Promise<T>
+  const text = await res.text()
+  if (text.trimStart().startsWith('<')) {
+    throw new Error('Backend unreachable — is the API server running on port 8000?')
+  }
+  return JSON.parse(text) as T
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
@@ -154,6 +170,23 @@ export async function triggerDiagnosis(id: string): Promise<Incident> {
   return authFetch<Incident>(`/incidents/${id}/diagnose`, { method: 'POST' })
 }
 
+export async function updateIncidentStatus(id: string, status: string): Promise<Incident> {
+  return authFetch<Incident>(`/incidents/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function deleteIncident(id: string): Promise<void> {
+  await authFetch<void>(`/incidents/${id}`, { method: 'DELETE' })
+}
+
+// ── Devices ────────────────────────────────────────────────────────────────
+
+export async function listDevices(): Promise<Device[]> {
+  return authFetch<Device[]>('/devices/')
+}
+
 // ── Runbooks ───────────────────────────────────────────────────────────────
 
 export async function listRunbooks(): Promise<Runbook[]> {
@@ -183,4 +216,72 @@ export async function uploadRunbook(file: File, title: string, tags: string[]): 
   })
   if (!res.ok) throw new Error((await res.json()).detail)
   return res.json()
+}
+
+// ── Topology ────────────────────────────────────────────────────────────────
+
+export interface TopologyDevice {
+  id: string
+  hostname: string
+  vendor: string
+  os: string
+  role: string
+  model: string
+  loopback: string
+  protocols: Record<string, unknown>
+}
+
+export interface TopologyEdge {
+  source: string
+  target: string
+  local_iface: string
+  remote_iface: string
+  local_ip?: string
+  status: string
+}
+
+export interface TopologyRecord {
+  id: string
+  name: string
+  description: string | null
+  status: string
+  is_default: boolean
+  graph_data: {
+    name: string
+    nodes: TopologyDevice[]
+    edges: TopologyEdge[]
+    failure_scenarios: Record<string, unknown>
+  } | null
+  created_at: string
+}
+
+export interface SimulateResponse {
+  failure_report: {
+    scenario: string
+    type: string
+    affected_device: string
+    affected_interface?: string
+    changes: string[]
+    success: boolean
+  }
+  impact_analysis: {
+    failed_device: string
+    failed_hostname: string
+    isolated_devices: { id: string; hostname: string; role: string }[]
+    impact_count: number
+    core_devices: string[]
+  }
+  available_scenarios: string[]
+  post_failure_graph: Record<string, unknown>
+}
+
+export async function listTopologies(): Promise<TopologyRecord[]> {
+  return authFetch<TopologyRecord[]>('/topology/')
+}
+
+export async function simulateFailure(topologyId: string, scenarioName: string): Promise<SimulateResponse> {
+  return authFetch<SimulateResponse>(`/topology/${topologyId}/simulate`, {
+    method: 'POST',
+    body: JSON.stringify({ scenario_name: scenarioName }),
+  })
 }

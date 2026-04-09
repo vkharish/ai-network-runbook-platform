@@ -45,6 +45,11 @@ export default function IncidentCard({ incident, onRefresh }: Props) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
+            {incident.incident_number != null && (
+              <span className="text-xs font-mono font-bold text-gray-500">
+                INC-{String(incident.incident_number).padStart(4, '0')}
+              </span>
+            )}
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${severityClass}`}>
               {incident.severity}
             </span>
