@@ -79,6 +79,39 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: LogFormat = LogFormat.JSON
 
+    # ---------------------------------------------------------------------------
+    # HashiCorp Vault
+    # ---------------------------------------------------------------------------
+    vault_enabled: bool = False
+    vault_addr: str = "http://localhost:8200"
+    vault_token: str = ""                      # dev/testing only
+    vault_role_id: str = ""                    # AppRole production auth
+    vault_secret_id: str = ""
+    vault_mount_path: str = "secret"
+    vault_device_prefix: str = "devices"
+
+    # ---------------------------------------------------------------------------
+    # ServiceNow
+    # ---------------------------------------------------------------------------
+    snow_enabled: bool = False
+    snow_instance_url: str = ""                # e.g. "dev12345.service-now.com"
+    snow_username: str = ""
+    snow_password: str = ""
+    snow_webhook_secret: str = ""              # HMAC shared secret for inbound webhooks
+    snow_auto_create_incidents: bool = True
+
+    # ---------------------------------------------------------------------------
+    # SSO / OIDC
+    # ---------------------------------------------------------------------------
+    oidc_enabled: bool = False
+    oidc_discovery_url: str = ""               # /.well-known/openid-configuration URL
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_redirect_uri: str = "http://localhost:8000/api/v1/auth/oidc/callback"
+    oidc_admin_groups: str = ""                # comma-separated group names → ADMIN role
+    oidc_engineer_groups: str = ""             # comma-separated group names → ENGINEER role
+    oidc_sync_roles: bool = False              # sync role from OIDC groups on every login
+
     @property
     def is_production(self) -> bool:
         return self.app_env == AppEnv.PRODUCTION

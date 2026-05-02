@@ -13,6 +13,11 @@ class User(AuditBase):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(50), nullable=False, default=Role.ENGINEER.value)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # SSO / OIDC fields
+    oidc_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    oidc_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     incidents: Mapped[list["Incident"]] = relationship(
         "Incident", back_populates="created_by_user", lazy="selectin"
     )

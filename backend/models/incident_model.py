@@ -38,6 +38,8 @@ class Incident(AuditBase):
     root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_report: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     diagnosis_steps: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    snow_sys_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )

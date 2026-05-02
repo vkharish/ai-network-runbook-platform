@@ -36,6 +36,9 @@ def _to_response(plan) -> RemediationPlanResponse:
         notes=plan.notes,
         llm_provider=plan.llm_provider,
         executed_at=plan.executed_at,
+        approved_by_id=plan.approved_by_id,
+        approved_at=plan.approved_at,
+        execution_log=plan.execution_log,
     )
 
 
@@ -79,7 +82,7 @@ async def approve_steps(
         raise HTTPException(status_code=400, detail="Provide at least one step_number.")
 
     plan = await remediation_service.approve_steps(
-        db, plan, payload.step_numbers, current_user.email
+        db, plan, payload.step_numbers, current_user.id, current_user.email
     )
     await db.commit()
     return _to_response(plan)
@@ -148,6 +151,35 @@ async def execute_remediation(
 
     return {
         "message": "Remediation execution started",
+        "task_id": task_id,
+        "incident_id": str(incident_id),
+        "poll": f"/api/v1/incidents/{incident_id}/remediation",
+    }
+
+
+@router.post("/{incident_id}/remediation/rollback", status_code=status.HTTP_202_ACCEPTED)
+async def rollback_remediation(
+    incident_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.ADMIN)),
+) -> dict:
+    """Roll back a completed remediation plan on the target devices.
+
+    Sends inverse commands (e.g. re-enable an interface that was shut down).
+    Requires ADMIN role. Only available for completed or failed plans.
+    """
+    plan = await remediation_service.get_plan(db, incident_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Remediation plan not found.")
+
+    try:
+        task_id = await remediation_service.rollback_plan(db, plan, current_user.email)
+        await db.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "message": "Rollback initiated",
         "task_id": task_id,
         "incident_id": str(incident_id),
         "poll": f"/api/v1/incidents/{incident_id}/remediation",

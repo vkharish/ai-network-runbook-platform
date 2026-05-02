@@ -1,0 +1,57 @@
+{{- if .Values.flower.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-runbook.fullname" . }}-flower
+  labels:
+    {{- include "ai-runbook.labels" . | nindent 4 }}
+    app.kubernetes.io/component: flower
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ai-runbook.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: flower
+  template:
+    metadata:
+      labels:
+        {{- include "ai-runbook.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: flower
+    spec:
+      containers:
+        - name: flower
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - backend.tasks.celery_worker
+            - flower
+            - --port={{ .Values.flower.port }}
+          ports:
+            - containerPort: {{ .Values.flower.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ai-runbook.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ai-runbook.secretName" . }}
+          resources:
+            {{- toYaml .Values.flower.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-runbook.fullname" . }}-flower
+  labels:
+    {{- include "ai-runbook.labels" . | nindent 4 }}
+    app.kubernetes.io/component: flower
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.flower.port }}
+      targetPort: {{ .Values.flower.port }}
+      name: flower
+  selector:
+    {{- include "ai-runbook.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: flower
+{{- end }}

@@ -11,6 +11,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from starlette.middleware.sessions import SessionMiddleware
+
 from backend.app.api.routes.audit_routes import router as audit_router
 from backend.app.api.routes.auth_routes import router as auth_router
 from backend.app.api.routes.device_routes import router as device_router
@@ -19,6 +21,7 @@ from backend.app.api.routes.remediation_routes import router as remediation_rout
 from backend.app.api.routes.runbook_routes import router as runbook_router
 from backend.app.api.routes.simulation_routes import router as simulation_router
 from backend.app.api.routes.topology_routes import router as topology_router
+from backend.app.api.routes.webhook_routes import router as webhook_router
 from backend.core.config import settings
 from backend.core.logging import configure_logging, get_logger, set_correlation_id
 from backend.database.base import Base
@@ -35,6 +38,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         log.info("db_tables_synced")
+    if settings.oidc_enabled:
+        from backend.core.oidc import configure_oidc
+        configure_oidc(app)
     yield
     log.info("shutdown")
     await engine.dispose()
@@ -51,6 +57,12 @@ def create_app() -> FastAPI:
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
         lifespan=lifespan,
+    )
+    # SessionMiddleware required for OIDC authorization code flow (state/nonce in session)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.app_secret_key,
+        https_only=settings.is_production,
     )
     app.add_middleware(
         CORSMiddleware,
@@ -83,6 +95,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router, prefix=API_PREFIX)
     app.include_router(device_router, prefix=API_PREFIX)
     app.include_router(remediation_router, prefix=API_PREFIX)
+    app.include_router(webhook_router, prefix=API_PREFIX)
 
     @app.get("/health", tags=["Health"])
     async def health() -> dict:

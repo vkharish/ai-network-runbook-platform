@@ -173,6 +173,58 @@ async def set_credentials(
     )
 
 
+@router.post("/{device_id}/credentials/rotate", status_code=status.HTTP_200_OK)
+async def rotate_credentials(
+    device_id: UUID,
+    payload: DeviceCredentialSet,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.ADMIN)),
+) -> dict:
+    """Rotate SSH credentials for a device.
+
+    When VAULT_ENABLED=true, updates the secret in Vault.
+    Otherwise updates the Fernet-encrypted password in the DB.
+    Requires ADMIN role.
+    """
+    result = await db.execute(
+        select(Device).options(selectinload(Device.credential)).where(Device.id == device_id)
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    from backend.core.vault import get_credential
+    from backend.core.config import settings
+
+    if settings.vault_enabled:
+        from backend.core.vault import _get_vault_client
+        try:
+            client = _get_vault_client()
+            client.rotate_device_secret(device.hostname, payload.password)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Vault rotation failed: {exc}")
+    else:
+        # Update Fernet-encrypted credential in DB
+        if device.credential:
+            device.credential.username = payload.username
+            device.credential.password_encrypted = encrypt_credential(payload.password)
+        else:
+            cred = DeviceCredential(
+                device_id=device_id,
+                username=payload.username,
+                password_encrypted=encrypt_credential(payload.password),
+            )
+            db.add(cred)
+        await db.flush()
+
+    await audit_service.log_action(
+        db, user_id=current_user.id, action="credential_rotated",
+        resource_type="device", resource_id=str(device_id),
+        metadata={"vault": settings.vault_enabled},
+    )
+    return {"rotated": True, "device": device.hostname, "vault": settings.vault_enabled}
+
+
 @router.post("/{device_id}/test", response_model=dict)
 async def test_connection(
     device_id: UUID,

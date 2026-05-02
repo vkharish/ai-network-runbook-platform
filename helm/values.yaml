@@ -1,0 +1,160 @@
+# Default values for ai-runbook-platform
+# Override in values-dev.yaml or values-prod.yaml
+
+image:
+  repository: ghcr.io/your-org/ai-runbook-platform
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# API (FastAPI)
+# ---------------------------------------------------------------------------
+api:
+  replicaCount: 2
+  port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+# ---------------------------------------------------------------------------
+# Celery worker
+# ---------------------------------------------------------------------------
+celery:
+  replicaCount: 2
+  concurrency: 4
+  pool: solo
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 80
+
+# ---------------------------------------------------------------------------
+# Celery Flower (monitoring UI)
+# ---------------------------------------------------------------------------
+flower:
+  enabled: true
+  port: 5555
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  host: runbook.example.com
+  tls: true
+  tlsSecretName: runbook-tls
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "52m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+
+# ---------------------------------------------------------------------------
+# Application config (non-secret env vars → ConfigMap)
+# ---------------------------------------------------------------------------
+config:
+  appEnv: production
+  appDebug: "false"
+  appAllowedOrigins: "https://runbook.example.com"
+  logLevel: INFO
+  logFormat: json
+  chromaHost: chroma
+  chromaPort: "8001"
+  chromaCollectionName: runbook_embeddings
+  llmProvider: anthropic
+  llmModel: claude-haiku-4-5-20251001
+  embeddingProvider: sentence_transformers
+  embeddingModel: BAAI/bge-small-en-v1.5
+  rerankerEnabled: "false"
+  jwtAlgorithm: HS256
+  jwtAccessTokenExpireMinutes: "60"
+  jwtRefreshTokenExpireDays: "7"
+  vaultEnabled: "false"
+  vaultAddr: "http://vault:8200"
+  snowEnabled: "false"
+  oidcEnabled: "false"
+
+# ---------------------------------------------------------------------------
+# Secrets — stored in Kubernetes Secret (use ExternalSecret in prod)
+# ---------------------------------------------------------------------------
+secrets:
+  # Set these or use externalSecrets below
+  appSecretKey: ""
+  credentialEncryptionKey: ""
+  databaseUrl: ""
+  redisUrl: ""
+  celeryBrokerUrl: ""
+  celeryResultBackend: ""
+  anthropicApiKey: ""
+  openaiApiKey: ""
+  vaultToken: ""
+  snowPassword: ""
+  oidcClientSecret: ""
+
+# ---------------------------------------------------------------------------
+# External Secrets Operator (production — pulls from Vault/AWS SM)
+# ---------------------------------------------------------------------------
+externalSecrets:
+  enabled: false
+  refreshInterval: 1h
+  secretStore: vault-backend     # ClusterSecretStore name
+  remoteRef:
+    key: secret/data/ai-runbook-platform
+
+# ---------------------------------------------------------------------------
+# Bitnami PostgreSQL subchart (set enabled: false in prod, use RDS/Cloud SQL)
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  auth:
+    database: runbook_db
+    username: runbook
+    password: runbook
+  primary:
+    persistence:
+      size: 20Gi
+
+# ---------------------------------------------------------------------------
+# Bitnami Redis subchart (set enabled: false in prod, use ElastiCache)
+# ---------------------------------------------------------------------------
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 5Gi
+
+# ---------------------------------------------------------------------------
+# ChromaDB (vector store) — deployed as a simple pod
+# ---------------------------------------------------------------------------
+chroma:
+  enabled: true
+  image: chromadb/chroma:0.5.12
+  port: 8001
+  persistence:
+    size: 20Gi

@@ -1,0 +1,29 @@
+# Development overrides — lower resource footprint, no TLS, debug mode
+image:
+  tag: dev
+  pullPolicy: Always
+
+api:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+
+celery:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+
+ingress:
+  host: localhost
+  tls: false
+
+config:
+  appEnv: development
+  appDebug: "true"
+  logFormat: text
+
+postgresql:
+  enabled: true
+
+redis:
+  enabled: true

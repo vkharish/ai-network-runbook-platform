@@ -30,6 +30,9 @@ class RemediationPlanResponse(BaseModel):
     notes: str
     llm_provider: str
     executed_at: str | None
+    approved_by_id: UUID | None = None
+    approved_at: str | None = None
+    execution_log: dict | None = None
 
 
 class ApproveStepsRequest(BaseModel):

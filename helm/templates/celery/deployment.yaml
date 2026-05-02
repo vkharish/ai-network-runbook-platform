@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-runbook.fullname" . }}-celery
+  labels:
+    {{- include "ai-runbook.labels" . | nindent 4 }}
+    app.kubernetes.io/component: celery
+spec:
+  {{- if not .Values.celery.autoscaling.enabled }}
+  replicas: {{ .Values.celery.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ai-runbook.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: celery
+  template:
+    metadata:
+      labels:
+        {{- include "ai-runbook.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: celery
+    spec:
+      containers:
+        - name: celery
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - backend.tasks.celery_worker
+            - worker
+            - --loglevel=info
+            - --pool={{ .Values.celery.pool }}
+            - --concurrency={{ .Values.celery.concurrency }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ai-runbook.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ai-runbook.secretName" . }}
+          livenessProbe:
+            exec:
+              command:
+                - celery
+                - -A
+                - backend.tasks.celery_worker
+                - inspect
+                - ping
+                - -t
+                - "5"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.celery.resources | nindent 12 }}

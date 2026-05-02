@@ -93,6 +93,7 @@ async def _run(plan_id: str) -> dict:
 
         plan.status = "failed" if any_failed else "completed"
         results["final_status"] = plan.status
+        plan.execution_log = results  # persist summary to DB
         await db.commit()
 
         log.info(
@@ -101,6 +102,64 @@ async def _run(plan_id: str) -> dict:
             incident_id=inc_id,
             status=plan.status,
         )
+
+    await engine.dispose()
+    return results
+
+
+@celery_app.task(bind=True, max_retries=0, name="tasks.rollback_remediation_plan")
+def rollback_remediation_plan(self, plan_id: str) -> dict:
+    """Attempt to reverse executed remediation steps (send inverse commands)."""
+    return asyncio.run(_rollback(plan_id))
+
+
+async def _rollback(plan_id: str) -> dict:
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import select
+    from backend.core.config import settings
+    from backend.models.remediation_model import RemediationPlan
+
+    engine = create_async_engine(settings.database_url, echo=False)
+    AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    results: dict = {"plan_id": plan_id, "steps_rolled_back": [], "final_status": ""}
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(RemediationPlan).where(RemediationPlan.id == plan_id))
+        plan = result.scalar_one_or_none()
+        if not plan:
+            log.error("rollback_plan_not_found", plan_id=plan_id)
+            return results
+
+        executed = [
+            s for s in plan.steps
+            if s.get("execution_status") == "completed"
+        ]
+        log.info("rollback_start", plan_id=plan_id, steps=len(executed))
+
+        for step in reversed(executed):          # reverse order
+            rollback_cmd = step.get("rollback_command", "")
+            if not rollback_cmd:
+                log.info("rollback_no_inverse", step=step.get("step_number"))
+                continue
+            output, success = await _execute_command(step["device"], rollback_cmd)
+            results["steps_rolled_back"].append({
+                "step_number": step["step_number"],
+                "device": step["device"],
+                "command": rollback_cmd,
+                "success": success,
+            })
+            log.info(
+                "rollback_step_done",
+                step=step["step_number"],
+                device=step["device"],
+                success=success,
+            )
+
+        plan.status = "rolled_back"
+        results["final_status"] = "rolled_back"
+        plan.execution_log = (plan.execution_log or {}) | {"rollback": results}
+        await db.commit()
 
     await engine.dispose()
     return results

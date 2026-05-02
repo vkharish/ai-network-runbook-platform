@@ -53,9 +53,10 @@ async def approve_steps(
     db: AsyncSession,
     plan: RemediationPlan,
     step_numbers: list[int],
+    approver_id: uuid.UUID,
     approver_email: str,
 ) -> RemediationPlan:
-    """Mark selected steps as approved."""
+    """Mark selected steps as approved. Sets plan-level approved_by_id on first approval."""
     now = datetime.now(timezone.utc).isoformat()
     updated = []
     for step in plan.steps:
@@ -68,6 +69,14 @@ async def approve_steps(
 
     plan.steps = updated
     plan.status = _compute_plan_status(updated)
+
+    # Set plan-level approver if not already set
+    if plan.approved_by_id is None and any(
+        s.get("approval_status") == "approved" for s in updated
+    ):
+        plan.approved_by_id = approver_id
+        plan.approved_at = now
+
     await db.flush()
     log.info(
         "remediation_steps_approved",
@@ -135,6 +144,31 @@ async def trigger_execution(
         task_id=task.id,
         executor=executor_email,
         approved_steps=len(approved),
+    )
+    return task.id
+
+
+async def rollback_plan(
+    db: AsyncSession,
+    plan: RemediationPlan,
+    requester_email: str,
+) -> str:
+    """Enqueue rollback of a completed remediation plan. Returns Celery task ID."""
+    if plan.status not in ("completed", "failed"):
+        raise ValueError(
+            f"Only completed or failed plans can be rolled back. Current status: {plan.status}"
+        )
+    plan.status = "rolling_back"
+    await db.flush()
+
+    from backend.tasks.remediation_task import rollback_remediation_plan
+    task = rollback_remediation_plan.delay(str(plan.id))
+    log.info(
+        "remediation_rollback_triggered",
+        incident_id=str(plan.incident_id),
+        plan_id=str(plan.id),
+        task_id=task.id,
+        requester=requester_email,
     )
     return task.id
 

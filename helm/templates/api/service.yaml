@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-runbook.fullname" . }}-api
+  labels:
+    {{- include "ai-runbook.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.api.port }}
+      targetPort: {{ .Values.api.port }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "ai-runbook.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api

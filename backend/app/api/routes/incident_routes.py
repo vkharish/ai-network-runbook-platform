@@ -43,6 +43,11 @@ async def create_incident(
     await db.flush()
     inc_ref = f"INC-{str(incident.incident_number).zfill(4)}"
     log.info("incident_created", inc_ref=inc_ref, incident_id=str(incident.id))
+
+    # ServiceNow sync (fire-and-forget — SNOW outage must not fail incident creation)
+    from backend.integrations import snow_sync
+    await snow_sync.on_incident_created(incident, db)
+
     return incident
 
 
@@ -66,9 +71,16 @@ async def update_incident(
     incident = result.scalar_one_or_none()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+    old_status = incident.status
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(incident, field, value)
     await db.flush()
+
+    # Push status change to ServiceNow if status changed
+    if incident.status != old_status:
+        from backend.integrations import snow_sync
+        await snow_sync.on_incident_status_changed(incident, db)
+
     return incident
 
 

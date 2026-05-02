@@ -81,23 +81,24 @@ class NetmikoDriver:
     # ------------------------------------------------------------------
 
     def _build_conn_params(self, device: Any) -> dict:
-        """Build Netmiko connection params, establishing jump host tunnel if needed."""
-        from backend.core.security import decrypt_credential
+        """Build Netmiko connection params, establishing jump host tunnel if needed.
 
-        creds = device.credential
-        if not creds:
-            raise ValueError(f"No credentials configured for {device.hostname}")
+        Credentials are resolved via Vault when VAULT_ENABLED=true,
+        falling back to Fernet-decrypted DB credentials otherwise.
+        """
+        from backend.core.vault import get_credential
+
         if not device.host:
             raise ValueError(f"No host/IP configured for {device.hostname}")
 
-        password = decrypt_credential(creds.password_encrypted)
+        username, password = get_credential(device)
         jump_hosts = getattr(device, "jump_hosts", []) or []
 
         conn_params: dict = {
             "device_type": device.device_type,
             "host":        device.host,
             "port":        device.port,
-            "username":    creds.username,
+            "username":    username,
             "password":    password,
             "timeout":     30,
             "banner_timeout": 15,

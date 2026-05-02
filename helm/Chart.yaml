@@ -1,0 +1,16 @@
+apiVersion: v2
+name: ai-runbook-platform
+description: AI-Powered Network Digital Twin and Autonomous Runbook Assistant
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: postgresql
+    version: "15.5.35"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "19.6.4"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
