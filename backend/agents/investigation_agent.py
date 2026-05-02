@@ -185,9 +185,20 @@ class InvestigationAgent:
             ]
             if len(vendor_chunks) >= 2:
                 log.info("vendor_post_filter_applied", vendor=vendor_hint, chunks=len(vendor_chunks))
-                return vendor_chunks[:8]
+                merged = vendor_chunks
 
-        return merged[:8]
+        # ── TOON Optimization 1: drop low-relevance chunks ────────────────
+        # Only keep chunks scoring above 0.65. If nothing passes, keep top 2.
+        high_signal = [c for c in merged if c.get("score", 0.0) >= 0.65]
+        if len(high_signal) >= 2:
+            merged = high_signal
+            log.info("toon_chunk_filter", kept=len(merged), threshold=0.65)
+        else:
+            merged = merged[:2]
+            log.info("toon_chunk_filter_fallback", kept=len(merged))
+
+        # Cap at 5 chunks (down from 8) — enough signal, fewer tokens
+        return merged[:5]
 
     @staticmethod
     def _detect_vendor(device: str | None) -> str | None:

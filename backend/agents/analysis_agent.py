@@ -47,6 +47,42 @@ class AnalysisAgent:
 
     system_prompt: str = _SYSTEM_PROMPT
 
+    def run_toon(self, toon_ctx: str, prior_analysis: "AnalysisResult | None" = None) -> "AnalysisResult":
+        """Run analysis using a TOON-compressed context string.
+
+        Used by specialist agents (BGP, JunOS) receiving compressed context
+        from the Orchestrator instead of the full InvestigationContext.
+        Saves 40-60% input tokens compared to run().
+        """
+        prior_block = ""
+        if prior_analysis:
+            prior_block = (
+                f"\n## Prior Analysis (confidence={prior_analysis.confidence:.0%})\n"
+                f"Root cause: {prior_analysis.root_cause}\n"
+                f"Refine or confirm this analysis using the TOON context below.\n"
+            )
+
+        prompt = (
+            f"{prior_block}"
+            f"\n## Incident Context (TOON format)\n"
+            f"```json\n{toon_ctx}\n```\n"
+            f"\nKeys: ref=incident_ref, ttl=title, sev=severity, dev=device, "
+            f"proto=protocol, kb=runbook_chunks(s=score,src=source,t=text), "
+            f"cli=CLI_outputs, nbr=topology_neighbors\n"
+            f"\nAnalyze and respond with the JSON object."
+        )
+
+        llm = get_llm_client()
+        raw = llm.complete(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+        )
+        return self._parse(raw)
+
     def run(self, context: InvestigationContext) -> AnalysisResult:
         prompt = self._build_prompt(context)
         llm = get_llm_client()

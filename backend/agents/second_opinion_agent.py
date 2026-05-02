@@ -26,6 +26,64 @@ class SecondOpinionAgent:
     and returns an enriched InvestigationContext for a second AnalysisAgent pass.
     """
 
+    def run_toon(
+        self,
+        toon_ctx: str,
+        toon_analysis: str,
+        original_context: InvestigationContext,
+    ) -> InvestigationContext:
+        """Re-investigate using TOON-compressed prior context + analysis.
+
+        Builds refined RAG queries from the compressed analysis,
+        fetches new chunks, merges into the original context.
+        Saves tokens by passing compressed strings instead of full objects.
+        """
+        import json
+        try:
+            analysis_dict = json.loads(toon_analysis)
+            root_cause = analysis_dict.get("rc", "")
+            evidence = analysis_dict.get("ev", [])
+            components = analysis_dict.get("comp", [])
+            confidence = analysis_dict.get("conf", 0.5)
+        except Exception:
+            root_cause, evidence, components, confidence = "", [], [], 0.5
+
+        queries: list[str] = []
+        if root_cause:
+            queries.append(root_cause)
+        for ev in evidence[:2]:
+            if len(ev) > 15:
+                queries.append(ev[:200])
+        for comp in components[:2]:
+            queries.append(f"{comp} troubleshooting")
+        if not queries:
+            queries.append(f"{original_context.title} resolution steps")
+
+        new_chunks = self._retrieve_chunks(queries[:4], top_k=3)
+        merged = self._merge_chunks(original_context.runbook_chunks, new_chunks)
+
+        log.info(
+            "second_opinion_toon_reinvestigated",
+            inc_ref=original_context.inc_ref,
+            new_chunks=len(new_chunks),
+            merged_total=len(merged),
+            prior_confidence=confidence,
+        )
+
+        return InvestigationContext(
+            incident_id=original_context.incident_id,
+            inc_ref=original_context.inc_ref,
+            title=original_context.title,
+            description=original_context.description,
+            severity=original_context.severity,
+            affected_device=original_context.affected_device,
+            affected_protocol=original_context.affected_protocol,
+            runbook_chunks=merged,
+            cli_outputs=original_context.cli_outputs,
+            citations=list({c["source"] for c in merged if c.get("source")}),
+            topology_neighbors=original_context.topology_neighbors,
+        )
+
     def run(
         self,
         context: InvestigationContext,

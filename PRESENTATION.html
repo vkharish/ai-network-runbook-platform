@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI-Powered Network Runbook Platform — MSAI 699 Capstone</title>
+<style>
+  /* ── Reset & base ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --accent:   #58a6ff;
+    --accent2:  #3fb950;
+    --accent3:  #f0883e;
+    --accent4:  #bc8cff;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --danger:   #f85149;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden; }
+
+  /* ── Slide container ──────────────────────────────────────── */
+  #deck { width: 100vw; height: 100vh; position: relative; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column;
+    padding: 56px 72px;
+    opacity: 0; transition: opacity .35s ease;
+  }
+  .slide.active { display: flex; opacity: 1; }
+
+  /* ── Slide variants ───────────────────────────────────────── */
+  .slide.title-slide {
+    background: radial-gradient(ellipse at 20% 50%, #1a2744 0%, #0d1117 60%);
+    justify-content: center; align-items: flex-start; gap: 20px;
+  }
+
+  .slide.section-break {
+    background: linear-gradient(135deg, #161b22 0%, #0d1117 100%);
+    justify-content: center; align-items: center; text-align: center;
+  }
+
+  /* ── Typography ───────────────────────────────────────────── */
+  .kicker {
+    font-size: .85rem; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+  }
+
+  h1 { font-size: 3rem; font-weight: 700; line-height: 1.15;
+    background: linear-gradient(135deg, #e6edf3, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+  h2 { font-size: 2rem; font-weight: 700; color: var(--text); margin-bottom: 28px;
+    border-bottom: 2px solid var(--border); padding-bottom: 12px; }
+
+  h2 .accent { color: var(--accent); }
+
+  h3 { font-size: 1.1rem; font-weight: 600; color: var(--accent); margin-bottom: 8px; }
+
+  p, li { font-size: 1.05rem; line-height: 1.65; color: var(--text); }
+
+  .sub { font-size: 1.25rem; color: var(--muted); margin-top: 12px; max-width: 680px; }
+  .meta { font-size: .9rem; color: var(--muted); margin-top: 32px; }
+
+  /* ── Layout helpers ───────────────────────────────────────── */
+  .cols { display: grid; gap: 28px; flex: 1; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cols-60-40 { grid-template-columns: 60fr 40fr; }
+
+  /* ── Cards ────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px 28px;
+  }
+  .card.accent-blue  { border-left: 4px solid var(--accent);  }
+  .card.accent-green { border-left: 4px solid var(--accent2); }
+  .card.accent-orange{ border-left: 4px solid var(--accent3); }
+  .card.accent-purple{ border-left: 4px solid var(--accent4); }
+  .card.accent-red   { border-left: 4px solid var(--danger);  }
+
+  /* ── Lists ────────────────────────────────────────────────── */
+  ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  ul li::before { content: "▸ "; color: var(--accent); font-size: .9rem; }
+
+  /* ── Tags / badges ────────────────────────────────────────── */
+  .tag {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: .78rem; font-weight: 600; margin: 3px;
+  }
+  .tag-blue   { background: #1f3460; color: var(--accent); }
+  .tag-green  { background: #1a3426; color: var(--accent2); }
+  .tag-orange { background: #3d2a14; color: var(--accent3); }
+  .tag-purple { background: #2d1f4a; color: var(--accent4); }
+
+  /* ── Stat blocks ──────────────────────────────────────────── */
+  .stat-block { text-align: center; padding: 20px 16px; }
+  .stat-num { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+  .stat-label { font-size: .85rem; color: var(--muted); margin-top: 6px; }
+  .stat-num.blue   { color: var(--accent);  }
+  .stat-num.green  { color: var(--accent2); }
+  .stat-num.orange { color: var(--accent3); }
+  .stat-num.purple { color: var(--accent4); }
+
+  /* ── Tables ───────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th {
+    background: #1f2937; color: var(--accent); text-align: left;
+    padding: 10px 14px; font-weight: 600; font-size: .82rem;
+    letter-spacing: .05em; text-transform: uppercase;
+  }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1a2233; }
+  .win  { color: var(--accent2); font-weight: 700; }
+  .lose { color: var(--danger);  }
+
+  /* ── Code / pipeline diagram ──────────────────────────────── */
+  .pipeline {
+    display: flex; align-items: center; gap: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px 28px; flex-wrap: wrap;
+  }
+  .pipe-node {
+    background: #1f2937; border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 18px;
+    font-size: .9rem; font-weight: 600; white-space: nowrap;
+  }
+  .pipe-node.blue   { border-color: var(--accent);  color: var(--accent);  }
+  .pipe-node.green  { border-color: var(--accent2); color: var(--accent2); }
+  .pipe-node.orange { border-color: var(--accent3); color: var(--accent3); }
+  .pipe-node.purple { border-color: var(--accent4); color: var(--accent4); }
+  .pipe-node.red    { border-color: var(--danger);  color: var(--danger);  }
+  .pipe-arrow { color: var(--muted); font-size: 1.2rem; padding: 0 8px; }
+
+  /* ── Timeline ─────────────────────────────────────────────── */
+  .timeline { display: flex; flex-direction: column; gap: 14px; }
+  .tl-item { display: flex; gap: 16px; align-items: flex-start; }
+  .tl-dot {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .8rem; font-weight: 700;
+  }
+  .tl-dot.done   { background: #1a3426; color: var(--accent2); border: 2px solid var(--accent2); }
+  .tl-dot.active { background: #1f3460; color: var(--accent);  border: 2px solid var(--accent);  }
+  .tl-content h3 { margin-bottom: 3px; }
+  .tl-content p  { font-size: .9rem; color: var(--muted); }
+
+  /* ── Progress bar ─────────────────────────────────────────── */
+  .progress-bar {
+    position: fixed; bottom: 0; left: 0; height: 3px;
+    background: var(--accent); transition: width .3s ease;
+    z-index: 100;
+  }
+
+  /* ── Nav controls ─────────────────────────────────────────── */
+  #controls {
+    position: fixed; bottom: 20px; right: 28px;
+    display: flex; gap: 10px; align-items: center; z-index: 100;
+  }
+  #controls button {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 18px; border-radius: 6px;
+    cursor: pointer; font-size: .9rem; transition: all .15s;
+  }
+  #controls button:hover { background: #1f2937; border-color: var(--accent); }
+  #slide-num { font-size: .85rem; color: var(--muted); }
+
+  /* ── Section break style ──────────────────────────────────── */
+  .section-break h1 {
+    font-size: 3.5rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent4));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .section-break p { font-size: 1.1rem; color: var(--muted); margin-top: 16px; }
+
+  /* ── Conclusion emphasis ──────────────────────────────────── */
+  .big-quote {
+    font-size: 1.4rem; line-height: 1.6; color: var(--text);
+    border-left: 4px solid var(--accent); padding-left: 24px;
+    font-style: italic;
+  }
+
+  /* ── Scrollable content area ──────────────────────────────── */
+  .scroll-content { flex: 1; overflow-y: auto; }
+</style>
+</head>
+<body>
+
+<div id="deck">
+
+  <!-- ── SLIDE 1: Title ──────────────────────────────────────── -->
+  <div class="slide title-slide active">
+    <div class="kicker">MSAI 699 — Capstone Project Presentation</div>
+    <h1>AI-Powered Network<br>Runbook Platform</h1>
+    <p class="sub">An autonomous incident diagnosis system using RAG, multi-agent orchestration,<br>and network digital twin technology for enterprise NOC environments.</p>
+    <div class="meta">
+      Harish Kulakarni &nbsp;|&nbsp; University of the Cumberlands &nbsp;|&nbsp; April 2026
+    </div>
+    <div style="margin-top: 40px; display: flex; gap: 10px; flex-wrap: wrap;">
+      <span class="tag tag-blue">FastAPI + Python</span>
+      <span class="tag tag-green">RAG + ChromaDB</span>
+      <span class="tag tag-orange">Multi-Agent LLM</span>
+      <span class="tag tag-purple">Network Digital Twin</span>
+      <span class="tag tag-blue">React + TypeScript</span>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 2: The Problem ────────────────────────────────── -->
+  <div class="slide">
+    <h2>The <span class="accent">Problem</span></h2>
+    <div class="cols cols-2">
+      <div class="card accent-red">
+        <h3>⏱ The Cost of Manual Search</h3>
+        <ul>
+          <li>NOC engineers spend <strong>30–90 minutes</strong> searching fragmented runbooks during live outages</li>
+          <li>Knowledge is scattered across PDFs, wikis, and tribal memory</li>
+          <li>Every minute of delay compounds business impact</li>
+          <li>Multi-vendor environments (Cisco + Juniper) double the complexity</li>
+        </ul>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="card accent-orange">
+          <h3>🌐 Multi-Vendor Complexity</h3>
+          <p>A BGP <code style="color:var(--accent3)">Idle (Admin)</code> state on IOS-XR requires different remediation than on JunOS — but search tools cannot surface this distinction.</p>
+        </div>
+        <div class="card accent-blue">
+          <h3>🧠 Cognitive Overload</h3>
+          <p>Engineers simultaneously interpret CLI output, recall protocol state machines, and cross-reference docs — all under time pressure during P1/P2 incidents.</p>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 24px; text-align: center; font-size: 1.1rem; color: var(--muted);">
+      <strong style="color:var(--text)">Core question:</strong> Can AI reduce time-to-diagnosis from <span style="color:var(--danger)">hours</span> to <span style="color:var(--accent2)">seconds</span>?
+    </div>
+  </div>
+
+  <!-- ── SLIDE 3: Solution Overview ─────────────────────────── -->
+  <div class="slide">
+    <h2>The <span class="accent">Solution</span></h2>
+    <div style="margin-bottom: 24px;">
+      <div class="pipeline">
+        <div class="pipe-node blue">📄 Runbook Corpus</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node blue">RAG Pipeline</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node orange">Investigation Agent</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node orange">Analysis Agent</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node green">Report + Steps</div>
+      </div>
+      <div style="margin-top: 12px; display: flex; gap: 12px; align-items: center; padding: 0 12px;">
+        <span style="color:var(--muted); font-size:.85rem;">Also feeds in:</span>
+        <div class="pipe-node purple" style="font-size:.85rem; padding: 7px 14px;">🔌 Live CLI Evidence</div>
+        <div class="pipe-node purple" style="font-size:.85rem; padding: 7px 14px;">🗺 Topology Graph</div>
+      </div>
+    </div>
+    <div class="cols cols-3">
+      <div class="card accent-blue">
+        <h3>📚 RAG Knowledge Base</h3>
+        <p>Runbooks ingested as semantic chunks. Hybrid BM25 + vector search retrieves the most relevant troubleshooting guidance at incident time.</p>
+      </div>
+      <div class="card accent-orange">
+        <h3>🤖 Multi-Agent Pipeline</h3>
+        <p>Six specialized agents — including BGP and JunOS specialists — coordinate through a dynamic orchestrator to produce structured root cause analysis.</p>
+      </div>
+      <div class="card accent-green">
+        <h3>🗺 Network Digital Twin</h3>
+        <p>A NetworkX graph model of the live topology provides neighbor context, failure propagation analysis, and simulated CLI evidence.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 4: System Architecture ───────────────────────── -->
+  <div class="slide">
+    <h2>System <span class="accent">Architecture</span></h2>
+    <div class="cols cols-60-40">
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="card accent-blue">
+          <h3>Backend Services</h3>
+          <ul>
+            <li><strong>FastAPI 0.115</strong> — Async REST API, JWT auth, RBAC</li>
+            <li><strong>PostgreSQL 16 + SQLAlchemy 2.0</strong> — Async ORM, JSONB for AI reports</li>
+            <li><strong>Celery 5.4 + Redis 7</strong> — Background task queue for LLM jobs</li>
+            <li><strong>ChromaDB 1.0</strong> — Vector store for runbook embeddings</li>
+          </ul>
+        </div>
+        <div class="card accent-orange">
+          <h3>AI & Agent Layer</h3>
+          <ul>
+            <li><strong>LLM-agnostic factory</strong> — OpenAI / Anthropic / Ollama via env var</li>
+            <li><strong>BAAI/bge-small-en-v1.5</strong> — Local embedding model (FastEmbed)</li>
+            <li><strong>6-agent orchestrator</strong> — Dynamic routing state machine</li>
+            <li><strong>NetworkX</strong> — Topology graph engine</li>
+          </ul>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="card accent-green">
+          <h3>Frontend</h3>
+          <ul>
+            <li>React + TypeScript + Vite</li>
+            <li>Tailwind + shadcn/ui</li>
+            <li>React Flow topology viz</li>
+          </ul>
+        </div>
+        <div class="card accent-purple">
+          <h3>Observability</h3>
+          <ul>
+            <li>structlog JSON logging</li>
+            <li>Prometheus metrics</li>
+            <li>Correlation IDs on every request</li>
+            <li>Celery Flower task monitor</li>
+            <li>Full audit log (RBAC actions)</li>
+          </ul>
+        </div>
+        <div class="card" style="border-left: 4px solid var(--muted);">
+          <h3 style="color: var(--muted);">Containerized</h3>
+          <p style="color: var(--muted); font-size:.9rem;">6 Docker services, docker-compose for local dev + Kubernetes-ready for production.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 5: RAG Pipeline ───────────────────────────────── -->
+  <div class="slide">
+    <h2>RAG <span class="accent">Pipeline</span></h2>
+    <div class="cols cols-2" style="flex: 0 0 auto; margin-bottom: 20px;">
+      <div class="card accent-blue">
+        <h3>📥 Ingestion</h3>
+        <ul>
+          <li>PDF + Markdown runbooks → text extraction</li>
+          <li>Recursive chunker: <strong>1,000 chars, 200 overlap</strong></li>
+          <li>Metadata per chunk: <code style="color:var(--accent)">vendor</code>, <code style="color:var(--accent)">protocol</code>, <code style="color:var(--accent)">source</code>, <code style="color:var(--accent)">tags</code></li>
+          <li>Stored in ChromaDB with dense embeddings</li>
+        </ul>
+      </div>
+      <div class="card accent-green">
+        <h3>🔍 Hybrid Retrieval</h3>
+        <ul>
+          <li><strong>Dense search</strong> — vector cosine similarity</li>
+          <li><strong>BM25 sparse search</strong> — keyword frequency scoring</li>
+          <li><strong>Reciprocal Rank Fusion</strong> — merges both lists</li>
+          <li><strong>Cross-encoder reranker</strong> — optional ms-marco-MiniLM</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card accent-orange">
+      <h3>💡 Why Hybrid Retrieval?</h3>
+      <p>Pure vector search misses protocol-specific exact keyword matches.
+      When an engineer's incident is <em>"BGP stuck in Idle (Admin)"</em>, BM25 correctly boosts
+      runbook chunks containing the exact phrase <code style="color:var(--accent3)">"Idle (Admin)"</code>
+      — a state that is semantically adjacent to, but technically distinct from, other BGP idle states.
+      Hybrid retrieval captures both semantic meaning and domain keyword precision.</p>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 6: Multi-Agent Orchestration ─────────────────── -->
+  <div class="slide">
+    <h2>Multi-Agent <span class="accent">Orchestration</span></h2>
+    <div style="margin-bottom: 22px;">
+      <div class="pipeline" style="flex-wrap: wrap; gap: 10px;">
+        <div class="pipe-node blue">InvestigationAgent<br><span style="font-size:.75rem;font-weight:400">RAG + CLI + Topology</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node orange">AnalysisAgent<br><span style="font-size:.75rem;font-weight:400">LLM Root Cause</span></div>
+        <div class="pipe-arrow">→</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="pipe-node purple" style="font-size:.82rem">BGPSpecialistAgent</div>
+          <div class="pipe-node purple" style="font-size:.82rem">JunosSpecialistAgent</div>
+          <div class="pipe-node red"    style="font-size:.82rem">SecondOpinionAgent</div>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node green">ReportAgent<br><span style="font-size:.75rem;font-weight:400">Structured Output</span></div>
+      </div>
+    </div>
+    <div class="cols cols-3">
+      <div class="card accent-purple">
+        <h3>Priority 1 — Low Confidence</h3>
+        <p>If <code style="color:var(--accent4)">confidence &lt; 0.6</code>, route to <strong>SecondOpinionAgent</strong> for a deeper RAG re-query with refined terms. Max 2 iterations.</p>
+      </div>
+      <div class="card accent-blue">
+        <h3>Priority 2 — BGP Protocol</h3>
+        <p>BGP incidents route to <strong>BGPSpecialistAgent</strong>, a specialist with deep BGP FSM knowledge and IOS-XR/JunOS BGP command expertise.</p>
+      </div>
+      <div class="card accent-orange">
+        <h3>Priority 3 — Juniper Device</h3>
+        <p>Juniper-named devices route to <strong>JunosSpecialistAgent</strong>, trained on JunOS operational mode syntax and adjacency state interpretation.</p>
+      </div>
+    </div>
+    <div style="margin-top: 16px; font-size: .9rem; color: var(--muted); padding: 0 4px;">
+      Every routing decision is persisted in <code style="color:var(--accent)">incident.ai_report.orchestration.decisions</code> for full auditability.
+    </div>
+  </div>
+
+  <!-- ── SLIDE 7: Digital Twin ───────────────────────────────── -->
+  <div class="slide">
+    <h2>Network <span class="accent">Digital Twin</span></h2>
+    <div class="cols cols-2">
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="card accent-blue">
+          <h3>Topology Model</h3>
+          <ul>
+            <li>YAML topology → <strong>NetworkX directed graph</strong></li>
+            <li>5-node multi-vendor lab: R1–R5</li>
+            <li>Cisco CSR1000v (IOS-XE) + Juniper vMX (JunOS)</li>
+            <li>BGP AS relationships, OSPF areas, interface links</li>
+          </ul>
+        </div>
+        <div class="card accent-green">
+          <h3>Graph Capabilities</h3>
+          <ul>
+            <li>Neighbor lookup for impacted device</li>
+            <li>Shortest path between any two nodes</li>
+            <li>Failure scenario simulation injection</li>
+            <li>CLI evidence loaded for neighbors too</li>
+          </ul>
+        </div>
+        <div class="card accent-orange">
+          <h3>Pre-Defined Failure Scenarios</h3>
+          <ul>
+            <li><code style="color:var(--accent3)">bgp_peer_down</code> — R1↔R2 BGP drop</li>
+            <li><code style="color:var(--accent3)">link_down_r2_r4</code> — Physical link failure</li>
+            <li><code style="color:var(--accent3)">ospf_neighbor_lost</code> — R3↔R5 adjacency</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card" style="background: #0d1a12; border: 1px solid #1a3426; display:flex; flex-direction:column; gap:12px; justify-content: center; align-items: center;">
+        <div style="font-size: .8rem; color: var(--muted); margin-bottom: 8px;">TOPOLOGY DIAGRAM</div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap: 8px; width: 100%;">
+          <!-- R1 CORE -->
+          <div style="background:#1f3460; border:1px solid var(--accent); border-radius:8px; padding:8px 20px; font-size:.85rem; font-weight:700; color:var(--accent);">R1-CORE (Cisco)</div>
+          <div style="display:flex; gap: 40px; align-items:flex-start;">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+              <div style="width:1px; height:20px; background:var(--border);"></div>
+              <div style="background:#1f2937; border:1px solid var(--border); border-radius:8px; padding:7px 14px; font-size:.82rem; color:var(--text);">R2-DIST (Cisco)</div>
+              <div style="width:1px; height:20px; background:var(--border);"></div>
+              <div style="background:#1f2937; border:1px solid var(--border); border-radius:8px; padding:7px 14px; font-size:.82rem; color:var(--text);">R4-ACCESS (Cisco)</div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+              <div style="width:1px; height:20px; background:var(--border);"></div>
+              <div style="background:#2d1f4a; border:1px solid var(--accent4); border-radius:8px; padding:7px 14px; font-size:.82rem; color:var(--accent4);">R3-DIST (Juniper)</div>
+              <div style="width:1px; height:20px; background:var(--border);"></div>
+              <div style="background:#2d1f4a; border:1px solid var(--accent4); border-radius:8px; padding:7px 14px; font-size:.82rem; color:var(--accent4);">R5-ACCESS (Juniper)</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top: 12px; display:flex; gap:12px; font-size:.75rem;">
+          <span class="tag tag-blue">Cisco IOS-XE</span>
+          <span class="tag tag-purple">Juniper JunOS</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 8: Benchmark Results ─────────────────────────── -->
+  <div class="slide">
+    <h2>Benchmark <span class="accent">Results</span></h2>
+    <div style="margin-bottom: 20px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Ollama llama3.2 (3B, local)</th>
+            <th>Anthropic claude-haiku-4-5</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Mean diagnosis time</td>
+            <td class="lose">75 – 100 minutes</td>
+            <td class="win">26 – 33 seconds</td>
+          </tr>
+          <tr>
+            <td>Root cause accuracy</td>
+            <td class="lose">"Root cause undetermined."</td>
+            <td class="win">Precise, device-specific</td>
+          </tr>
+          <tr>
+            <td>Confidence score</td>
+            <td class="lose">Always 0.5 (floor value)</td>
+            <td class="win">0.75 – 0.92 (meaningful)</td>
+          </tr>
+          <tr>
+            <td>JSON output reliability</td>
+            <td class="lose">Frequent parse failures</td>
+            <td class="win">Consistent structure</td>
+          </tr>
+          <tr>
+            <td>False alarm detection</td>
+            <td class="lose">Not detected</td>
+            <td class="win">Correctly identified</td>
+          </tr>
+          <tr>
+            <td>Cost per diagnosis</td>
+            <td>~$0.00 (local GPU)</td>
+            <td class="win">~$0.004</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cols cols-3">
+      <div class="card stat-block accent-green">
+        <div class="stat-num green">~180×</div>
+        <div class="stat-label">Faster with Anthropic vs. Ollama</div>
+      </div>
+      <div class="card stat-block accent-blue">
+        <div class="stat-num blue">$0.004</div>
+        <div class="stat-label">Cost per full diagnosis run</div>
+      </div>
+      <div class="card stat-block accent-orange">
+        <div class="stat-num orange">0.88</div>
+        <div class="stat-label">Confidence — BGP Admin Shutdown</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 9: Live Test Scenarios ───────────────────────── -->
+  <div class="slide">
+    <h2>Live Test <span class="accent">Scenarios</span></h2>
+    <p style="color:var(--muted); margin-bottom: 20px; font-size:.9rem;">Tested against Cisco DevNet Always-On IOS-XR Sandbox — real device, real CLI output.</p>
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div class="card accent-green">
+        <h3>✅ Scenario 1 — BGP Admin Shutdown</h3>
+        <p><code style="color:var(--accent2)">neighbor 2.2.2.2 shutdown</code> on xrd-1. System output: <em>"BGP neighbor 2.2.2.2 is administratively shut down, preventing session establishment."</em>
+        Correctly distinguished <code>Idle (Admin)</code> from reachability or authentication failure. Confidence: <strong>0.88</strong>. Time: <strong>26.2 sec</strong>.</p>
+      </div>
+      <div class="card accent-blue">
+        <h3>✅ Scenario 2 — BGP 0 Prefixes Received</h3>
+        <p>Session established but <code style="color:var(--accent)">PfxRcd=0</code>. System identified <strong>3 candidate root causes</strong>: inbound route-map filtering, empty peer RIB, route-policy rejection. Correctly diagnosed healthy TCP session with routing/policy issue. Confidence: <strong>0.82</strong>. Time: <strong>32.7 sec</strong>.</p>
+      </div>
+      <div class="card accent-purple">
+        <h3>✅ Scenario 3 — False Alarm Detection</h3>
+        <p>Incident titled "OSPF down on xrd-1" — but OSPF was healthy with one full adjacency and 4 routes in the RIB. System output: <em>"OSPF is operationally UP — this is a false alarm. Recommend closing ticket and reviewing monitoring alert thresholds."</em> Confidence: <strong>0.91</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 10: Challenges & Fixes ───────────────────────── -->
+  <div class="slide">
+    <h2>Challenges <span class="accent">&amp; How We Fixed Them</span></h2>
+    <div class="cols cols-2">
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="card accent-red">
+          <h3>⚠ LLM Output Non-Determinism</h3>
+          <p><strong>Problem:</strong> Models returned JSON wrapped in Markdown fences, with preamble text, or with missing keys — causing silent downstream failures.</p>
+          <p style="margin-top: 8px;"><strong>Fix:</strong> Three-layer defense — regex fence stripping → <code>json.loads</code> try/except → structured fallback with <code>confidence=0.4</code>, which automatically triggers SecondOpinionAgent.</p>
+        </div>
+        <div class="card accent-orange">
+          <h3>⚠ Prompt Size Overflow</h3>
+          <p><strong>Problem:</strong> IOS-XR CLI outputs (show interfaces, show logging) can be 10,000+ chars. Multi-device context hit LLM context limits.</p>
+          <p style="margin-top: 8px;"><strong>Fix:</strong> <code>_guard_prompt_size()</code> enforces 400,000-char limit; CLI blocks capped at 3,000 chars each.</p>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="card accent-red">
+          <h3>⚠ bcrypt 5.x / passlib Incompatibility</h3>
+          <p><strong>Problem:</strong> 17 integration tests failed with <code>ValueError: password cannot be longer than 72 bytes</code> — passlib 1.7.4 broke with bcrypt 5.0.0's stricter API.</p>
+          <p style="margin-top: 8px;"><strong>Fix:</strong> Replaced passlib's CryptContext with direct <code>bcrypt.hashpw()</code> and <code>bcrypt.checkpw()</code> calls, eliminating the incompatible intermediary.</p>
+        </div>
+        <div class="card accent-blue">
+          <h3>⚠ Reranker Output Contract Drift</h3>
+          <p><strong>Problem:</strong> Reranker fallback path (flashrank not installed) returned chunks without <code>rerank_score</code> key — breaking downstream agent code.</p>
+          <p style="margin-top: 8px;"><strong>Fix:</strong> Both fallback branches now attach <code>rerank_score</code> from the existing vector similarity score, ensuring consistent output schema.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 11: Test Results ──────────────────────────────── -->
+  <div class="slide">
+    <h2>Test Suite <span class="accent">Results</span></h2>
+    <div class="cols cols-2" style="margin-bottom: 20px;">
+      <div>
+        <table>
+          <thead>
+            <tr><th>Module</th><th>Tests</th><th>Before Fix</th><th>After Fix</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Agent Pipeline</td><td>9</td><td class="win">9 ✓</td><td class="win">9 ✓</td></tr>
+            <tr><td>RAG + Reranker</td><td>19</td><td class="lose">16 ✓ / 3 ✗</td><td class="win">19 ✓</td></tr>
+            <tr><td>Incidents API</td><td>8</td><td class="lose">1 ✓ / 7 ✗</td><td class="win">8 ✓</td></tr>
+            <tr><td>Authentication</td><td>6</td><td class="lose">1 ✓ / 5 ✗</td><td class="win">6 ✓</td></tr>
+            <tr><td>Audit Log</td><td>8</td><td class="lose">3 ✓ / 5 ✗</td><td class="win">8 ✓</td></tr>
+            <tr style="font-weight:700;"><td>Total</td><td>49</td><td class="lose">29 ✓ / 20 ✗</td><td class="win">49 ✓</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div class="card accent-green" style="text-align:center;">
+          <div class="stat-num green" style="font-size: 3.5rem;">49 / 49</div>
+          <div class="stat-label" style="font-size: 1rem;">Tests passing after remediation</div>
+        </div>
+        <div class="card accent-blue">
+          <h3>Test Architecture</h3>
+          <ul>
+            <li>In-memory SQLite — no external services needed</li>
+            <li>StubLLMClient — deterministic, zero API cost</li>
+            <li>monkeypatch ChromaDB — no vector store needed</li>
+            <li>Full async HTTP testing via httpx + ASGI</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 12: Future Work ───────────────────────────────── -->
+  <div class="slide">
+    <h2>Future <span class="accent">Work</span></h2>
+    <div class="cols cols-3">
+      <div class="card accent-blue">
+        <h3>📡 Streaming Diagnosis</h3>
+        <p>Server-sent events (SSE) to stream intermediate agent outputs to the NOC dashboard in real time — investigation context first, then analysis, then final report.</p>
+      </div>
+      <div class="card accent-green">
+        <h3>🔁 Feedback Loop</h3>
+        <p>Capture engineer acceptance/rejection of AI recommendations to train a preference model — continuously improving diagnosis accuracy through RLHF.</p>
+      </div>
+      <div class="card accent-orange">
+        <h3>⚡ Automated Remediation</h3>
+        <p>For high-confidence, allow-listed scenarios (e.g., <code>clear ip bgp</code>), execute remediation commands automatically with mandatory human confirmation.</p>
+      </div>
+      <div class="card accent-purple">
+        <h3>🔗 Multi-Incident Correlation</h3>
+        <p>Group co-occurring alerts by topology adjacency and time window. Diagnose a fiber cut as one causal event rather than dozens of correlated symptoms.</p>
+      </div>
+      <div class="card accent-blue">
+        <h3>🧠 Domain-Tuned Embeddings</h3>
+        <p>Fine-tune the embedding model on (incident query, runbook passage) pairs from production data to improve retrieval precision on networking terminology.</p>
+      </div>
+      <div class="card accent-green">
+        <h3>📊 Causal Graph Reasoning</h3>
+        <p>Model failure propagation causally in the digital twin — reason about upstream physical causes (optical power loss) rather than only protocol-layer symptoms.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 13: Conclusion ────────────────────────────────── -->
+  <div class="slide">
+    <h2><span class="accent">Conclusion</span></h2>
+    <div style="display: flex; flex-direction: column; gap: 20px; flex: 1;">
+      <p class="big-quote">
+        "The difference between a 3-billion parameter local model and a frontier cloud model on network protocol reasoning is not marginal — it is the difference between an unusable system and a production-capable one."
+      </p>
+      <div class="cols cols-2" style="flex: 0 0 auto;">
+        <div class="card accent-green">
+          <h3>What Was Delivered</h3>
+          <ul>
+            <li>Full-stack platform: FastAPI + React + PostgreSQL + ChromaDB</li>
+            <li>RAG pipeline with hybrid BM25 + vector + reranker</li>
+            <li>6-agent orchestrated diagnosis pipeline</li>
+            <li>Network digital twin with 5-node multi-vendor topology</li>
+            <li>49/49 tests passing, full Docker deployment</li>
+          </ul>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="card stat-block accent-green">
+            <div class="stat-num green">26–33s</div>
+            <div class="stat-label">End-to-end diagnosis time</div>
+          </div>
+          <div class="card stat-block accent-blue">
+            <div class="stat-num blue">~180×</div>
+            <div class="stat-label">Speed improvement vs. local LLM</div>
+          </div>
+          <div class="card stat-block accent-orange">
+            <div class="stat-num orange">$0.004</div>
+            <div class="stat-label">Cost per diagnosis (Anthropic)</div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align: center; color: var(--muted); font-size: .9rem; margin-top: 8px;">
+        MSAI 699 — University of the Cumberlands &nbsp;|&nbsp; Harish Kulakarni &nbsp;|&nbsp; April 2026
+      </div>
+    </div>
+  </div>
+
+</div><!-- /deck -->
+
+<!-- Progress bar -->
+<div class="progress-bar" id="progress"></div>
+
+<!-- Nav controls -->
+<div id="controls">
+  <button onclick="prev()">← Prev</button>
+  <span id="slide-num">1 / 13</span>
+  <button onclick="next()">Next →</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let current = 0;
+
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    document.getElementById('slide-num').textContent = `${current + 1} / ${slides.length}`;
+    document.getElementById('progress').style.width =
+      `${((current + 1) / slides.length) * 100}%`;
+  }
+
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                     { e.preventDefault(); prev(); }
+  });
+
+  // Initialize progress bar
+  document.getElementById('progress').style.width =
+    `${(1 / slides.length) * 100}%`;
+</script>
+
+</body>
+</html>

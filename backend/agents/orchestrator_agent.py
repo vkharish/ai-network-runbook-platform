@@ -23,7 +23,10 @@ import time
 
 from backend.agents.analysis_agent import AnalysisAgent, AnalysisResult
 from backend.agents.investigation_agent import InvestigationAgent, InvestigationContext
+from backend.agents.remediation_agent import RemediationAgent, RemediationProposal
+from backend.agents.tool_agent import ToolCallingAgent
 from backend.agents.report_agent import ReportAgent, ReportOutput
+from backend.agents.toon import TOON
 from backend.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -82,6 +85,7 @@ class AgentState:
     context: InvestigationContext | None = None
     analysis: AnalysisResult | None = None
     report: ReportOutput | None = None
+    remediation: RemediationProposal | None = None
 
     # Current node in the state machine
     route: str = "investigate"
@@ -111,7 +115,7 @@ class OrchestratorAgent:
         self,
         incident: Any,
         topology_graph: dict[str, Any] | None = None,
-    ) -> ReportOutput:
+    ) -> tuple[ReportOutput, RemediationProposal | None]:
         state = AgentState(incident=incident, topology_graph=topology_graph)
         t_start = time.perf_counter()
 
@@ -141,11 +145,14 @@ class OrchestratorAgent:
                     state = self._step_second_opinion(state)
                 elif state.route == "report":
                     state = self._step_report(state)
+                elif state.route == "remediation":
+                    state = self._step_remediation(state)
                 else:
                     log.error("orchestrator_unknown_route", route=state.route)
                     state.route = "report"
 
             assert state.report is not None, "Orchestrator exited without producing a report"
+            assert state.remediation is not None, "Orchestrator exited without a remediation proposal"
 
             elapsed = time.perf_counter() - t_start
             final_route = next(
@@ -166,8 +173,9 @@ class OrchestratorAgent:
                 elapsed_s=round(elapsed, 2),
                 confidence=state.report.confidence,
                 agents=state.report.orchestration.get("agents_invoked", []),
+                remediation_steps=len(state.remediation.steps),
             )
-            return state.report
+            return state.report, state.remediation
 
         except Exception:
             if _PROMETHEUS_AVAILABLE:
@@ -179,7 +187,8 @@ class OrchestratorAgent:
     # ------------------------------------------------------------------
 
     def _step_investigate(self, state: AgentState) -> AgentState:
-        state.context = InvestigationAgent().run(
+        # ── ToolCallingAgent: ReAct loop — LLM decides which commands to run ──
+        state.context = ToolCallingAgent().run(
             state.incident, topology_graph=state.topology_graph
         )
         state.decisions.append(
@@ -205,7 +214,9 @@ class OrchestratorAgent:
         from backend.agents.bgp_specialist_agent import BGPSpecialistAgent
 
         assert state.context is not None
-        state.analysis = BGPSpecialistAgent().run(state.context)
+        # ── TOON Optimization 2: pass compressed context to specialist ────
+        toon_ctx = self._toon_context(state.context, label="bgp_specialist")
+        state.analysis = BGPSpecialistAgent().run_toon(toon_ctx, state.analysis)
         state.decisions.append(
             f"iter{state.iteration}:bgp_specialist"
             f" confidence={state.analysis.confidence:.2f}"
@@ -217,7 +228,9 @@ class OrchestratorAgent:
         from backend.agents.junos_specialist_agent import JunosSpecialistAgent
 
         assert state.context is not None
-        state.analysis = JunosSpecialistAgent().run(state.context)
+        # ── TOON Optimization 2: pass compressed context to specialist ────
+        toon_ctx = self._toon_context(state.context, label="junos_specialist")
+        state.analysis = JunosSpecialistAgent().run_toon(toon_ctx, state.analysis)
         state.decisions.append(
             f"iter{state.iteration}:junos_specialist"
             f" confidence={state.analysis.confidence:.2f}"
@@ -230,7 +243,10 @@ class OrchestratorAgent:
 
         assert state.context is not None
         assert state.analysis is not None
-        state.context = SecondOpinionAgent().run(state.context, state.analysis)
+        # ── TOON Optimization 2: pass compressed context + analysis summary ─
+        toon_ctx = self._toon_context(state.context, label="second_opinion")
+        toon_analysis = TOON.compress_analysis(state.analysis)
+        state.context = SecondOpinionAgent().run_toon(toon_ctx, toon_analysis, state.context)
         state.iteration += 1
         state.decisions.append(
             f"iter{state.iteration}:second_opinion"
@@ -242,7 +258,18 @@ class OrchestratorAgent:
     def _step_report(self, state: AgentState) -> AgentState:
         assert state.context is not None
         assert state.analysis is not None
-        report = ReportAgent().run(state.context, state.analysis)
+        # ── TOON Optimization 3: ReportAgent gets compact summary only ────
+        toon_ctx = self._toon_context(state.context, label="report")
+        toon_analysis = TOON.compress_analysis(state.analysis)
+        report = ReportAgent().run_toon(toon_ctx, toon_analysis, state.analysis)
+
+        # Backfill citations + cli_evidence from full context (not sent to LLM)
+        report.citations = [
+            {"source": c.get("source", ""), "chunk_index": c.get("chunk_index", 0), "score": c.get("score", 0.0)}
+            for c in state.context.runbook_chunks
+        ]
+        report.cli_evidence = state.context.cli_outputs
+
         report.orchestration = {
             "decisions": state.decisions,
             "total_iterations": state.iteration,
@@ -250,6 +277,17 @@ class OrchestratorAgent:
         }
         state.report = report
         state.decisions.append("report_generated")
+        state.route = "remediation"
+        return state
+
+    def _step_remediation(self, state: AgentState) -> AgentState:
+        assert state.context is not None
+        assert state.analysis is not None
+        assert state.report is not None
+        state.remediation = RemediationAgent().run(state.context, state.analysis, state.report)
+        state.decisions.append(
+            f"remediation_proposed steps={len(state.remediation.steps)}"
+        )
         state.route = "done"
         return state
 
@@ -309,7 +347,19 @@ class OrchestratorAgent:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _toon_context(ctx: InvestigationContext, label: str) -> str:
+        """Compress InvestigationContext to TOON string and log savings."""
+        import json
+        original = json.dumps({
+            "title": ctx.title, "description": ctx.description,
+            "runbook_chunks": ctx.runbook_chunks, "cli_outputs": ctx.cli_outputs,
+        })
+        compressed = TOON.compress_context(ctx)
+        TOON.log_savings(label, original, compressed, inc_ref=ctx.inc_ref)
+        return compressed
+
+    @staticmethod
     def _agents_invoked(decisions: list[str]) -> list[str]:
         """Extract unique agent names from the decision log."""
-        labels = ["investigate", "analyze", "bgp_specialist", "junos_specialist", "second_opinion", "report"]
+        labels = ["investigate", "analyze", "bgp_specialist", "junos_specialist", "second_opinion", "report", "remediation"]
         return [label for label in labels if any(label in d for d in decisions)]

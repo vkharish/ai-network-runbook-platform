@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.agents.orchestrator_agent import OrchestratorAgent
 from backend.core.logging import get_logger
 from backend.models.incident_model import Incident, IncidentStatus
+from backend.models.remediation_model import RemediationPlan  # noqa: F401 — register mapper
 from backend.models.runbook_model import Runbook  # noqa: F401 — ensure all mappers are registered
 from backend.models.topology_model import Topology, TopologyStatus
 from backend.models.user_model import User  # noqa: F401
@@ -58,7 +59,7 @@ async def run_diagnosis(incident_id: str, db: AsyncSession) -> dict:
             log.info("topology_context_loaded", inc_ref=inc_ref, incident_id=incident_id, topology=topology.name)
 
         # ── Multi-agent orchestration ─────────────────────────────────────
-        report = OrchestratorAgent().run(incident, topology_graph=topology_graph)
+        report, remediation_proposal = OrchestratorAgent().run(incident, topology_graph=topology_graph)
 
         orchestration = report.orchestration
         log.info(
@@ -70,9 +71,10 @@ async def run_diagnosis(incident_id: str, db: AsyncSession) -> dict:
             confidence=report.confidence,
             steps=len(report.steps),
             citations=len(report.citations),
+            remediation_steps=len(remediation_proposal.steps) if remediation_proposal else 0,
         )
 
-        # ── Persist ───────────────────────────────────────────────────────
+        # ── Persist diagnosis ─────────────────────────────────────────────
         # Truncate cli_evidence to prevent enormous JSONB storage on live devices
         report_dict = asdict(report)
         if report_dict.get("cli_evidence"):
@@ -83,6 +85,23 @@ async def run_diagnosis(incident_id: str, db: AsyncSession) -> dict:
         incident.ai_report = report_dict
         incident.root_cause = report.root_cause
         incident.status = IncidentStatus.AWAITING_INPUT.value
+
+        # ── Persist remediation plan (pending human approval) ─────────────
+        # Upsert: delete existing plan first so re-diagnosis always produces a fresh one
+        if remediation_proposal and remediation_proposal.steps:
+            from backend.services.remediation_service import create_plan, get_plan
+            existing_plan = await get_plan(db, incident.id)
+            if existing_plan:
+                await db.delete(existing_plan)
+                await db.flush()
+            await create_plan(db, incident.id, remediation_proposal)
+            log.info(
+                "remediation_plan_persisted",
+                inc_ref=inc_ref,
+                incident_id=incident_id,
+                steps=len(remediation_proposal.steps),
+            )
+
         await db.commit()
 
         log.info("diagnosis_persisted", inc_ref=inc_ref, incident_id=incident_id, status=incident.status)

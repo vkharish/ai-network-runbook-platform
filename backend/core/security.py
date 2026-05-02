@@ -77,9 +77,9 @@ from cryptography.fernet import Fernet
 
 
 def _get_fernet() -> Fernet:
-    """Derive a Fernet key from APP_SECRET_KEY."""
+    """Derive a Fernet key from CREDENTIAL_ENCRYPTION_KEY (separate from JWT secret)."""
     import base64, hashlib
-    key = hashlib.sha256(settings.app_secret_key.encode()).digest()
+    key = hashlib.sha256(settings.credential_encryption_key.encode()).digest()
     return Fernet(base64.urlsafe_b64encode(key))
 
 

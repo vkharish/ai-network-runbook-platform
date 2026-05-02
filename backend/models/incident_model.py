@@ -42,6 +42,9 @@ class Incident(AuditBase):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     created_by_user: Mapped["User"] = relationship("User", back_populates="incidents")
+    remediation_plan: Mapped["RemediationPlan | None"] = relationship(  # type: ignore
+        "RemediationPlan", back_populates="incident", uselist=False, cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Incident {self.title!r} status={self.status}>"

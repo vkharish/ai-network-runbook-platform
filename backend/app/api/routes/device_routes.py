@@ -12,12 +12,29 @@ from backend.database.session import get_db
 from backend.models.device_model import Device, DeviceCredential
 from backend.models.user_model import User
 from backend.schemas.device_schema import DeviceCreate, DeviceCredentialSet, DeviceResponse, DeviceUpdate
+from backend.core.security import encrypt_credential
 from backend.services import audit_service
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
 
 
+def _encrypt_jump_hosts(jump_hosts: list) -> list[dict]:
+    """Encrypt passwords for all jump host hops before DB storage."""
+    encrypted = []
+    for hop in jump_hosts:
+        # hop may be JumpHostInput (schema) or dict
+        if hasattr(hop, "model_dump"):
+            hop_dict = hop.model_dump()
+        else:
+            hop_dict = dict(hop)
+        plaintext = hop_dict.pop("password", None)
+        hop_dict["password_encrypted"] = encrypt_credential(plaintext) if plaintext else ""
+        encrypted.append(hop_dict)
+    return encrypted
+
+
 def _to_response(device: Device, has_credentials: bool = False) -> DeviceResponse:
+    jump_hosts = getattr(device, "jump_hosts", None) or []
     return DeviceResponse(
         id=device.id,
         hostname=device.hostname,
@@ -30,6 +47,7 @@ def _to_response(device: Device, has_credentials: bool = False) -> DeviceRespons
         live_enabled=device.live_enabled,
         topology_node_id=device.topology_node_id,
         has_credentials=has_credentials,
+        jump_host_count=len(jump_hosts),
     )
 
 
@@ -50,7 +68,10 @@ async def create_device(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.ENGINEER)),
 ) -> DeviceResponse:
-    device = Device(**payload.model_dump())
+    data = payload.model_dump()
+    # Encrypt jump host passwords before storing
+    data["jump_hosts"] = _encrypt_jump_hosts(data.get("jump_hosts", []))
+    device = Device(**data)
     db.add(device)
     await db.flush()
     await audit_service.log_action(
@@ -89,7 +110,10 @@ async def update_device(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
+    updates = payload.model_dump(exclude_none=True)
+    if "jump_hosts" in updates:
+        updates["jump_hosts"] = _encrypt_jump_hosts(updates["jump_hosts"])
+    for field, value in updates.items():
         setattr(device, field, value)
     await db.flush()
     await audit_service.log_action(
@@ -131,8 +155,6 @@ async def set_credentials(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-
-    from backend.core.security import encrypt_credential
 
     # Delete existing credential if present
     if device.credential:

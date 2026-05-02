@@ -2,7 +2,7 @@
 
 import uuid
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.database.base import AuditBase
 
@@ -19,6 +19,16 @@ class Device(AuditBase):
     port: Mapped[int] = mapped_column(Integer, default=22, nullable=False)
     live_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     topology_node_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # maps to graph node id
+
+    # Jump host chain — ordered list of hops to reach this device.
+    # Each hop: {host, port, username, password_encrypted}
+    # Empty list = direct connection. Supports unlimited hops.
+    # Example (2-hop):
+    #   [
+    #     {"host": "jumphost1.corp", "port": 22, "username": "netops", "password_encrypted": "..."},
+    #     {"host": "jumphost2.mgmt", "port": 22, "username": "netops", "password_encrypted": "..."}
+    #   ]
+    jump_hosts: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     credential: Mapped["DeviceCredential | None"] = relationship(
         "DeviceCredential", back_populates="device", uselist=False, cascade="all, delete-orphan"

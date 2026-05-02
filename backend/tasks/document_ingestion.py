@@ -71,7 +71,7 @@ async def _ingest_pipeline(runbook_id: str, file_path: str) -> dict:
             runbook = result.scalar_one_or_none()
             if runbook is None:
                 raise ValueError(f"Runbook {runbook_id} not found in database.")
-            runbook_title = runbook.title
+            runbook_title = runbook.original_name
             runbook.status = RunbookStatus.PROCESSING.value
             await db.commit()
 

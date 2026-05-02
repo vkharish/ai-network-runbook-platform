@@ -15,4 +15,14 @@ celery_app.conf.imports = [
     "backend.tasks.document_ingestion",
     "backend.tasks.embedding_tasks",
     "backend.tasks.diagnosis_task",
+    "backend.tasks.remediation_task",
+    "backend.tasks.monitoring_task",
 ]
+
+# Celery Beat — periodic tasks
+celery_app.conf.beat_schedule = {
+    "monitor-device-health-every-5-minutes": {
+        "task": "tasks.monitor_device_health",
+        "schedule": 300.0,   # seconds — change to 60.0 for faster iteration in dev
+    },
+}

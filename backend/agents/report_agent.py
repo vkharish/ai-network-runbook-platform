@@ -58,6 +58,59 @@ class ReportOutput:
 class ReportAgent:
     """Structures the analysis into the final report stored in incident.ai_report."""
 
+    def run_toon(
+        self,
+        toon_ctx: str,
+        toon_analysis: str,
+        full_analysis: AnalysisResult,
+    ) -> ReportOutput:
+        """Generate report using TOON-compressed context + analysis.
+
+        The full_analysis object is still used to populate ReportOutput fields
+        (root_cause, confidence etc.) — only the LLM prompt is compressed.
+        Saves ~1,500 tokens vs passing full InvestigationContext.
+        """
+        prompt = (
+            f"## Incident Context (TOON)\n```json\n{toon_ctx}\n```\n\n"
+            f"## Analysis (TOON)\n```json\n{toon_analysis}\n```\n\n"
+            f"Keys for context: ref=incident_ref, ttl=title, sev=severity, dev=device, "
+            f"proto=protocol, kb=runbook_chunks, cli=CLI_outputs\n"
+            f"Keys for analysis: rc=root_cause, hyp=hypothesis, conf=confidence, "
+            f"ev=evidence, comp=affected_components, urg=urgency\n\n"
+            f"Generate the structured remediation report now."
+        )
+
+        llm = get_llm_client()
+        raw = llm.complete(
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+        )
+        structured = self._parse(raw)
+        provider_label = _llm_label()
+
+        return ReportOutput(
+            summary=structured.get("summary", full_analysis.root_cause),
+            root_cause=full_analysis.root_cause,
+            hypothesis=full_analysis.hypothesis,
+            confidence=full_analysis.confidence,
+            urgency=full_analysis.urgency,
+            steps=structured.get("steps", []),
+            commands=structured.get("commands", []),
+            citations=[],          # citations populated by orchestrator from full context
+            cli_evidence={},       # populated by incident_service from full context
+            affected_components=full_analysis.affected_components,
+            escalation=structured.get(
+                "escalation",
+                "Escalate to Tier 3 NOC if issue is not resolved within 30 minutes.",
+            ),
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            llm_provider=provider_label,
+        )
+
     def run(self, context: InvestigationContext, analysis: AnalysisResult) -> ReportOutput:
         prompt = self._build_prompt(context, analysis)
         llm = get_llm_client()

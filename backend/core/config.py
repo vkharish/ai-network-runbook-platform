@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     app_env: AppEnv = AppEnv.DEVELOPMENT
     app_debug: bool = False
     app_secret_key: str = Field(..., min_length=32)
+    credential_encryption_key: str = Field(..., min_length=32)
     app_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
     @property

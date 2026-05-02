@@ -102,7 +102,7 @@ async def upload_runbook(
     # Enqueue Celery ingestion task (import here to avoid circular imports).
     from backend.tasks.document_ingestion import ingest_runbook
 
-    ingest_runbook.delay(str(runbook.id), str(dest_path), title=runbook.title)
+    ingest_runbook.delay(str(runbook.id), str(dest_path), title=runbook.original_name)
 
     return runbook
 
