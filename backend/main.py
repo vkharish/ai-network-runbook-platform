@@ -11,8 +11,6 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from starlette.middleware.sessions import SessionMiddleware
-
 from backend.app.api.routes.audit_routes import router as audit_router
 from backend.app.api.routes.auth_routes import router as auth_router
 from backend.app.api.routes.device_routes import router as device_router
@@ -59,11 +57,19 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     # SessionMiddleware required for OIDC authorization code flow (state/nonce in session)
-    app.add_middleware(
-        SessionMiddleware,
-        secret_key=settings.app_secret_key,
-        https_only=settings.is_production,
-    )
+    # Only loaded when OIDC_ENABLED=true to avoid requiring itsdangerous in non-OIDC deployments
+    if settings.oidc_enabled:
+        try:
+            from starlette.middleware.sessions import SessionMiddleware
+            app.add_middleware(
+                SessionMiddleware,
+                secret_key=settings.app_secret_key,
+                https_only=settings.is_production,
+            )
+        except ImportError:
+            raise RuntimeError(
+                "OIDC_ENABLED=true requires itsdangerous. Run: pip install itsdangerous"
+            )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
