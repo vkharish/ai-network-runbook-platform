@@ -14,6 +14,9 @@ class RunbookResponse(BaseModel):
     chunk_count: int
     description: str | None
     tags: list[str] | None
+    # Phase 3: auto-generation fields (defaults preserve backward compat)
+    auto_generated: bool = False
+    source_incident_id: UUID | None = None
     created_at: datetime
 
 

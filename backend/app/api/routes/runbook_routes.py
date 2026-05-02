@@ -129,6 +129,42 @@ async def reembed_runbook(
 
 
 @router.post(
+    "/{runbook_id}/approve",
+    response_model=RunbookResponse,
+    summary="Approve an auto-generated runbook draft and trigger indexing (ADMIN only)",
+)
+async def approve_runbook(
+    runbook_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(require_role(Role.ADMIN)),
+) -> RunbookResponse:
+    """
+    Move an auto-generated runbook from PENDING_REVIEW → PENDING and enqueue
+    the embedding task so it gets indexed into ChromaDB.
+    """
+    from backend.models.runbook_model import Runbook, RunbookStatus
+    from sqlalchemy import select
+
+    result = await db.execute(select(Runbook).where(Runbook.id == runbook_id))
+    runbook = result.scalar_one_or_none()
+    if not runbook:
+        raise HTTPException(status_code=404, detail="Runbook not found")
+    if not runbook.auto_generated:
+        raise HTTPException(status_code=400, detail="Only auto-generated runbooks can be approved this way")
+    if runbook.status != RunbookStatus.PENDING_REVIEW.value:
+        raise HTTPException(status_code=400, detail=f"Runbook is not in PENDING_REVIEW status: {runbook.status}")
+
+    runbook.status = RunbookStatus.PENDING.value
+    await db.commit()
+    await db.refresh(runbook)
+
+    from backend.tasks.document_ingestion import ingest_runbook
+    ingest_runbook.delay(str(runbook.id), f"uploads/runbooks/{runbook.filename}")
+
+    return RunbookResponse.model_validate(runbook)
+
+
+@router.post(
     "/query",
     response_model=RunbookQueryResponse,
     summary="RAG query across all indexed runbooks",

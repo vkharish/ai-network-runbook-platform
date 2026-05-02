@@ -16,6 +16,7 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     OLLAMA = "ollama"
+    VLLM = "vllm"  # Phase 3: on-prem OpenAI-compatible endpoint
 
 
 class EmbeddingProvider(str, Enum):
@@ -99,6 +100,54 @@ class Settings(BaseSettings):
     snow_password: str = ""
     snow_webhook_secret: str = ""              # HMAC shared secret for inbound webhooks
     snow_auto_create_incidents: bool = True
+
+    # ---------------------------------------------------------------------------
+    # NetBox device sync
+    # ---------------------------------------------------------------------------
+    netbox_enabled: bool = False
+    netbox_url: str = ""                       # e.g. "https://netbox.corp.local"
+    netbox_token: str = ""
+    netbox_sync_interval_minutes: int = 30
+
+    # ---------------------------------------------------------------------------
+    # Slack
+    # ---------------------------------------------------------------------------
+    slack_enabled: bool = False
+    slack_bot_token: str = ""                  # xoxb-...
+    slack_channel: str = ""                    # e.g. "#noc-alerts"
+    slack_signing_secret: str = ""             # HMAC validation of interactive payloads
+
+    # ---------------------------------------------------------------------------
+    # Microsoft Teams
+    # ---------------------------------------------------------------------------
+    teams_enabled: bool = False
+    teams_webhook_url: str = ""                # Incoming webhook URL from Teams connector
+
+    # ---------------------------------------------------------------------------
+    # OpenTelemetry distributed tracing
+    # ---------------------------------------------------------------------------
+    otel_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    otel_service_name: str = "ai-network-runbook-platform"
+
+    # ---------------------------------------------------------------------------
+    # Multi-tenant site isolation
+    # ---------------------------------------------------------------------------
+    multitenancy_enabled: bool = False
+
+    # ---------------------------------------------------------------------------
+    # vLLM on-prem endpoint (Phase 3 — VLLM provider)
+    # ---------------------------------------------------------------------------
+    vllm_base_url: str = "http://localhost:8080/v1"  # OpenAI-compatible base URL
+    vllm_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+
+    # ---------------------------------------------------------------------------
+    # Phase 3: Intelligence features (all off by default)
+    # ---------------------------------------------------------------------------
+    feedback_enabled: bool = False          # Diagnosis feedback → RAG reranking adjustment
+    correlation_enabled: bool = False       # Incident correlation via embedding similarity
+    runbook_autogen_enabled: bool = False   # Auto-generate runbooks from resolved incidents
+    predictive_enabled: bool = False        # Predictive anomaly detection on device metrics
 
     # ---------------------------------------------------------------------------
     # SSO / OIDC

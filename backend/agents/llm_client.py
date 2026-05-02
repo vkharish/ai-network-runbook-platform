@@ -82,6 +82,25 @@ class OllamaClient(BaseLLMClient):
         return response["message"]["content"]
 
 
+class VLLMClient(BaseLLMClient):
+    """On-prem vLLM server via OpenAI-compatible REST API — reuses the openai SDK."""
+
+    def complete(self, messages: list[dict], temperature: float = 0.2, max_tokens: int = 2048) -> str:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key="EMPTY",  # vLLM ignores the key; must be non-empty
+            base_url=settings.vllm_base_url,
+        )
+        response = client.chat.completions.create(
+            model=settings.vllm_model,
+            messages=self._guard_prompt_size(messages),  # type: ignore[arg-type]
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return response.choices[0].message.content or ""
+
+
 def get_llm_client() -> BaseLLMClient:
     """Factory — returns the configured LLM client."""
     if settings.llm_provider == LLMProvider.OPENAI:
@@ -90,6 +109,9 @@ def get_llm_client() -> BaseLLMClient:
     elif settings.llm_provider == LLMProvider.ANTHROPIC:
         log.info("llm_client_anthropic", model=settings.llm_model)
         return AnthropicClient()
+    elif settings.llm_provider == LLMProvider.VLLM:
+        log.info("llm_client_vllm", model=settings.vllm_model, base_url=settings.vllm_base_url)
+        return VLLMClient()
     else:
         log.info("llm_client_ollama", model=settings.ollama_model)
         return OllamaClient()

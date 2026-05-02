@@ -25,6 +25,17 @@ from backend.core.logging import configure_logging, get_logger, set_correlation_
 from backend.database.base import Base
 from backend.database.session import engine
 
+# Ensure all ORM models are imported so SQLAlchemy can resolve relationship strings
+# at mapper-configure time — even models whose routes are conditionally registered.
+import backend.models.user_model          # noqa: F401
+import backend.models.incident_model      # noqa: F401
+import backend.models.runbook_model       # noqa: F401
+import backend.models.device_model        # noqa: F401
+import backend.models.topology_model      # noqa: F401
+import backend.models.site_model          # noqa: F401 — referenced by Device/Incident/User.site
+import backend.models.diagnosis_feedback_model  # noqa: F401 — Phase 3
+import backend.models.anomaly_model       # noqa: F401 — Phase 3
+
 configure_logging()
 log = get_logger(__name__)
 
@@ -39,6 +50,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.oidc_enabled:
         from backend.core.oidc import configure_oidc
         configure_oidc(app)
+    if settings.otel_enabled:
+        from backend.core.tracing import configure_tracing
+        configure_tracing(app)
     yield
     log.info("shutdown")
     await engine.dispose()
@@ -102,6 +116,16 @@ def create_app() -> FastAPI:
     app.include_router(device_router, prefix=API_PREFIX)
     app.include_router(remediation_router, prefix=API_PREFIX)
     app.include_router(webhook_router, prefix=API_PREFIX)
+
+    # Phase 2: Site routes only registered when MULTITENANCY_ENABLED=true
+    if settings.multitenancy_enabled:
+        from backend.app.api.routes.site_routes import router as site_router
+        app.include_router(site_router, prefix=API_PREFIX)
+
+    # Phase 3: Feedback routes only registered when FEEDBACK_ENABLED=true
+    if settings.feedback_enabled:
+        from backend.app.api.routes.feedback_routes import router as feedback_router
+        app.include_router(feedback_router, prefix=API_PREFIX)
 
     @app.get("/health", tags=["Health"])
     async def health() -> dict:

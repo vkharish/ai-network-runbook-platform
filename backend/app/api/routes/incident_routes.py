@@ -44,9 +44,17 @@ async def create_incident(
     inc_ref = f"INC-{str(incident.incident_number).zfill(4)}"
     log.info("incident_created", inc_ref=inc_ref, incident_id=str(incident.id))
 
-    # ServiceNow sync (fire-and-forget — SNOW outage must not fail incident creation)
-    from backend.integrations import snow_sync
+    # External system sync — all wrapped, none can fail incident creation
+    from backend.integrations import snow_sync, slack_sync, teams_sync
     await snow_sync.on_incident_created(incident, db)
+    await slack_sync.on_incident_created(incident, db)
+    await teams_sync.on_incident_created(incident, db)
+
+    # Phase 3: fire-and-forget correlation task (no-op when CORRELATION_ENABLED=false)
+    from backend.core.config import settings as _s
+    if _s.correlation_enabled:
+        from backend.tasks.correlation_task import correlate_incident
+        correlate_incident.delay(str(incident.id))
 
     return incident
 
@@ -76,10 +84,16 @@ async def update_incident(
         setattr(incident, field, value)
     await db.flush()
 
-    # Push status change to ServiceNow if status changed
+    # Push status change to external systems if status changed
     if incident.status != old_status:
         from backend.integrations import snow_sync
         await snow_sync.on_incident_status_changed(incident, db)
+
+        # Phase 3: auto-generate runbook when incident transitions to RESOLVED
+        from backend.core.config import settings as _s
+        if _s.runbook_autogen_enabled and incident.status == IncidentStatus.RESOLVED.value:
+            from backend.tasks.runbook_generation_task import generate_runbook_from_incident
+            generate_runbook_from_incident.delay(str(incident.id))
 
     return incident
 

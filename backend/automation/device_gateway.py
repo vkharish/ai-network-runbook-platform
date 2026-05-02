@@ -22,10 +22,17 @@ _simulator_driver = SimulatorDriver()
 
 
 def _get_driver(device):
-    if device.live_enabled:
-        from backend.automation.drivers.netmiko_driver import NetmikoDriver
-        return NetmikoDriver()
-    return _simulator_driver
+    if not device.live_enabled:
+        return _simulator_driver
+    os_lower = (getattr(device, "os", "") or "").lower()
+    if "eos" in os_lower or "arista" in os_lower:
+        from backend.automation.drivers.arista_driver import AristaDriver
+        return AristaDriver()
+    if "nxos" in os_lower or "nx-os" in os_lower or "nxos" in os_lower:
+        from backend.automation.drivers.nxos_driver import NXOSDriver
+        return NXOSDriver()
+    from backend.automation.drivers.netmiko_driver import NetmikoDriver
+    return NetmikoDriver()
 
 
 class DeviceGateway:

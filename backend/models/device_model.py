@@ -20,6 +20,12 @@ class Device(AuditBase):
     live_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     topology_node_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # maps to graph node id
 
+    # Multi-tenant site isolation (nullable — only used when MULTITENANCY_ENABLED=true)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    site: Mapped["Site | None"] = relationship("Site", back_populates="devices")  # type: ignore
+
     # Jump host chain — ordered list of hops to reach this device.
     # Each hop: {host, port, username, password_encrypted}
     # Empty list = direct connection. Supports unlimited hops.

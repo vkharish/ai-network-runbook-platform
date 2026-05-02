@@ -8,7 +8,9 @@ import backend.models.user_model       # noqa
 import backend.models.incident_model   # noqa
 import backend.models.runbook_model    # noqa
 import backend.models.topology_model   # noqa
-import backend.models.device_model     # noqa
+import backend.models.device_model              # noqa
+import backend.models.diagnosis_feedback_model  # noqa: Phase 3
+import backend.models.anomaly_model             # noqa: Phase 3
 
 config = context.config
 if config.config_file_name:

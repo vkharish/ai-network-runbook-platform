@@ -93,6 +93,21 @@ def _call_llm(context: str, query: str) -> str:
         )
         return response.content[0].text  # type: ignore[union-attr]
 
+    elif settings.llm_provider == LLMProvider.VLLM:
+        from openai import OpenAI
+
+        client = OpenAI(api_key="EMPTY", base_url=settings.vllm_base_url)
+        response = client.chat.completions.create(
+            model=settings.vllm_model,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+            max_tokens=1024,
+            temperature=0.2,
+        )
+        return response.choices[0].message.content or ""
+
     else:  # Ollama
         import ollama
 

@@ -1,7 +1,7 @@
 import uuid
 from enum import Enum
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,7 @@ class IncidentStatus(str, Enum):
     AWAITING_INPUT = "awaiting_input"
     RESOLVED = "resolved"
     CLOSED = "closed"
+    PREDICTED = "predicted"  # Phase 3: anomaly detector pre-creates incident
 
 
 class IncidentSeverity(str, Enum):
@@ -39,6 +40,18 @@ class Incident(AuditBase):
     ai_report: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     diagnosis_steps: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     snow_sys_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    # Phase 3: incident correlation (nullable — only set when CORRELATION_ENABLED=true)
+    parent_incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    correlation_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Multi-tenant site isolation (nullable — only used when MULTITENANCY_ENABLED=true)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    site: Mapped["Site | None"] = relationship("Site", back_populates="incidents")  # type: ignore
 
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False

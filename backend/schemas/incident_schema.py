@@ -34,6 +34,9 @@ class IncidentResponse(BaseModel):
     affected_protocol: str | None
     root_cause: str | None
     ai_report: dict[str, Any] | None
+    # Phase 3: correlation fields (None when CORRELATION_ENABLED=false)
+    parent_incident_id: UUID | None = None
+    correlation_score: float | None = None
     created_by: UUID
     created_at: datetime
     updated_at: datetime

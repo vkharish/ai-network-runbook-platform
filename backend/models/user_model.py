@@ -1,4 +1,7 @@
-from sqlalchemy import Boolean, String
+import uuid
+
+from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.security import Role
@@ -17,6 +20,11 @@ class User(AuditBase):
     # SSO / OIDC fields
     oidc_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     oidc_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Multi-tenant site isolation (nullable — only used when MULTITENANCY_ENABLED=true)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     incidents: Mapped[list["Incident"]] = relationship(
         "Incident", back_populates="created_by_user", lazy="selectin"

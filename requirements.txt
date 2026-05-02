@@ -45,7 +45,22 @@ mypy==1.11.2
 pre-commit==3.8.0
 
 # Phase 1 Enterprise additions
-hvac>=2.1.0                 # HashiCorp Vault client
-authlib>=1.3.0              # OIDC / OAuth2 SSO
-itsdangerous>=2.1.0         # SessionMiddleware (required by authlib starlette client)
-starlette>=0.40.0           # SessionMiddleware (already transitive via fastapi)
+hvac>=2.1.0                 # HashiCorp Vault client (VAULT_ENABLED=true)
+authlib>=1.3.0              # OIDC / OAuth2 SSO (OIDC_ENABLED=true)
+itsdangerous>=2.1.0         # SessionMiddleware for OIDC (OIDC_ENABLED=true)
+
+# Phase 2 Enterprise additions
+# NetBox: uses httpx (already above) — no new dependency
+# Slack:  uses httpx — no new dependency
+# Teams:  uses httpx — no new dependency
+# Arista eAPI: uses httpx — no new dependency
+# NX-OS NX-API: uses httpx — no new dependency
+
+# OpenTelemetry — lazy imports, only needed when OTEL_ENABLED=true
+opentelemetry-api>=1.24.0
+opentelemetry-sdk>=1.24.0
+opentelemetry-exporter-otlp-proto-grpc>=1.24.0
+opentelemetry-instrumentation-fastapi>=0.45b0
+opentelemetry-instrumentation-sqlalchemy>=0.45b0
+opentelemetry-instrumentation-httpx>=0.45b0
+opentelemetry-instrumentation-celery>=0.45b0

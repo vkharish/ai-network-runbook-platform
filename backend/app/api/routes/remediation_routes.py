@@ -85,6 +85,17 @@ async def approve_steps(
         db, plan, payload.step_numbers, current_user.id, current_user.email
     )
     await db.commit()
+
+    # Notify external systems (no-op when disabled)
+    from backend.integrations import slack_sync, teams_sync
+    from backend.models.incident_model import Incident
+    from sqlalchemy import select as _select
+    inc_result = await db.execute(_select(Incident).where(Incident.id == plan.incident_id))
+    incident = inc_result.scalar_one_or_none()
+    if incident:
+        await slack_sync.on_remediation_update(incident, "approved", current_user.email, db)
+        await teams_sync.on_remediation_update(incident, "approved", current_user.email, db)
+
     return _to_response(plan)
 
 
@@ -117,6 +128,17 @@ async def reject_steps(
         db, plan, payload.step_numbers, payload.reason, current_user.email
     )
     await db.commit()
+
+    # Notify external systems (no-op when disabled)
+    from backend.integrations import slack_sync, teams_sync
+    from backend.models.incident_model import Incident
+    from sqlalchemy import select as _select
+    inc_result = await db.execute(_select(Incident).where(Incident.id == plan.incident_id))
+    incident = inc_result.scalar_one_or_none()
+    if incident:
+        await slack_sync.on_remediation_update(incident, "rejected", current_user.email, db)
+        await teams_sync.on_remediation_update(incident, "rejected", current_user.email, db)
+
     return _to_response(plan)
 
 
